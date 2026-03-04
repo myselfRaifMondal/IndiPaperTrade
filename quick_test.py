@@ -10,6 +10,14 @@ import time
 # Add project root to Python path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+# Test TOTP availability before importing data_engine
+print("Checking TOTP availability...")
+try:
+    from smartapi import generate_totp_from_secret
+    print("✓ TOTP module available")
+except ImportError as e:
+    print(f"✗ TOTP module not available: {e}")
+
 from execution_engine import OrderSimulator, OrderSide
 from data_engine import MarketDataEngine
 

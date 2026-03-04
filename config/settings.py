@@ -5,22 +5,64 @@ Loads API credentials from environment variables and manages system settings.
 
 import os
 from typing import Optional
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 
 class Settings:
     """
     Central configuration management class.
     All sensitive credentials are loaded from environment variables.
+    Supports both legacy SMARTAPI_* and new ANGEL_* credential formats.
     """
     
-    # Angel One SmartAPI Credentials
+    # New format: Angel One SmartAPI Credentials (with TOTP)
+    ANGEL_API_KEY: str = os.getenv('ANGEL_API_KEY', '')
+    ANGEL_CLIENT_ID: str = os.getenv('ANGEL_CLIENT_ID', '')
+    ANGEL_PASSWORD: str = os.getenv('ANGEL_PASSWORD', '')
+    ANGEL_TOTP_SECRET: str = os.getenv('ANGEL_TOTP_SECRET', '')
+    
+    # Legacy format: Angel One SmartAPI Credentials (backward compatibility)
     SMARTAPI_CLIENT_ID: str = os.getenv('SMARTAPI_CLIENT_ID', '')
     SMARTAPI_API_KEY: str = os.getenv('SMARTAPI_API_KEY', '')
     SMARTAPI_USERNAME: str = os.getenv('SMARTAPI_USERNAME', '')
     SMARTAPI_PASSWORD: str = os.getenv('SMARTAPI_PASSWORD', '')
-    
-    # SmartAPI Endpoints
     SMARTAPI_FEED_TOKEN: str = os.getenv('SMARTAPI_FEED_TOKEN', '')
+    
+    # Unified credentials - use classmethods to ensure proper evaluation
+    @classmethod
+    def get_api_key(cls) -> str:
+        """Get API key (prefer new format, fall back to legacy)"""
+        return cls.ANGEL_API_KEY or cls.SMARTAPI_API_KEY
+    
+    @classmethod
+    def get_client_id(cls) -> str:
+        """Get client ID (prefer new format, fall back to legacy)"""
+        return cls.ANGEL_CLIENT_ID or cls.SMARTAPI_CLIENT_ID or cls.SMARTAPI_USERNAME
+    
+    @classmethod
+    def get_password(cls) -> str:
+        """Get password (prefer new format, fall back to legacy)"""
+        return cls.ANGEL_PASSWORD or cls.SMARTAPI_PASSWORD
+    
+    @classmethod
+    def get_totp_secret(cls) -> str:
+        """Get TOTP secret (new format only)"""
+        return cls.ANGEL_TOTP_SECRET
+    
+    @classmethod
+    def get_feed_token(cls) -> str:
+        """Get feed token (legacy format only)"""
+        return cls.SMARTAPI_FEED_TOKEN
+    
+    # Legacy properties for backward compatibility
+    API_KEY: str = os.getenv('ANGEL_API_KEY') or os.getenv('SMARTAPI_API_KEY', '')
+    CLIENT_ID: str = os.getenv('ANGEL_CLIENT_ID') or os.getenv('SMARTAPI_CLIENT_ID') or os.getenv('SMARTAPI_USERNAME', '')
+    PASSWORD: str = os.getenv('ANGEL_PASSWORD') or os.getenv('SMARTAPI_PASSWORD', '')
+    TOTP_SECRET: str = os.getenv('ANGEL_TOTP_SECRET', '')
+    FEED_TOKEN: str = os.getenv('SMARTAPI_FEED_TOKEN', '')
     
     # WebSocket Configuration
     WEBSOCKET_URL: str = os.getenv(
@@ -60,16 +102,26 @@ class Settings:
     def validate_credentials(cls) -> bool:
         """
         Validate that required API credentials are set.
+        Supports both new (TOTP-based) and legacy (feed token) authentication.
         Returns True if all required credentials are present.
         """
-        required_fields = [
-            cls.SMARTAPI_CLIENT_ID,
+        # Check new format (with TOTP)
+        has_new_format = all([
+            cls.ANGEL_API_KEY,
+            cls.ANGEL_CLIENT_ID,
+            cls.ANGEL_PASSWORD,
+            cls.ANGEL_TOTP_SECRET
+        ])
+        
+        # Check legacy format (with feed token)
+        has_legacy_format = all([
+            cls.SMARTAPI_CLIENT_ID or cls.SMARTAPI_USERNAME,
             cls.SMARTAPI_API_KEY,
-            cls.SMARTAPI_USERNAME,
             cls.SMARTAPI_PASSWORD,
-            cls.SMARTAPI_FEED_TOKEN,
-        ]
-        return all(field for field in required_fields)
+            cls.SMARTAPI_FEED_TOKEN
+        ])
+        
+        return has_new_format or has_legacy_format
     
     @classmethod
     def get_credentials_summary(cls) -> dict:

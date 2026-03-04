@@ -30,6 +30,25 @@ except ImportError:
         "Install with: pip install smartapi-python"
     )
 
+try:
+    import sys
+    import os
+    # Add project root to path if not already there
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    if project_root not in sys.path:
+        sys.path.insert(0, project_root)
+    
+    from smartapi import generate_totp_from_secret
+    TOTP_AVAILABLE = True
+except ImportError as e:
+    import logging
+    logging.getLogger(__name__).warning(f"TOTP generator import failed: {e}")
+    TOTP_AVAILABLE = False
+except Exception as e:
+    import logging
+    logging.getLogger(__name__).warning(f"TOTP generator import error: {e}")
+    TOTP_AVAILABLE = False
+
 import websocket
 from config.settings import Settings, INSTRUMENT_TOKENS
 
@@ -204,6 +223,7 @@ class SmartAPIDataFetcher:
     def authenticate(self) -> bool:
         """
         Authenticate with Angel One SmartAPI.
+        Supports both TOTP-based and legacy feed token authentication.
         
         Returns:
             True if authentication successful, False otherwise
@@ -215,13 +235,37 @@ class SmartAPIDataFetcher:
                 return False
             
             # Create SmartAPI connection object
-            self.smartapi = SmartConnect(api_key=Settings.SMARTAPI_API_KEY)
+            api_key = Settings.API_KEY
+            client_id = Settings.CLIENT_ID
+            password = Settings.PASSWORD
+            totp_secret = Settings.TOTP_SECRET
+            
+            logger.debug(f"Using API Key: {api_key[:10]}*** (length: {len(api_key)})")
+            logger.debug(f"Using Client ID: {client_id}")
+            logger.debug(f"TOTP Secret available: {bool(totp_secret)} (length: {len(totp_secret) if totp_secret else 0})")
+            
+            self.smartapi = SmartConnect(api_key=api_key)
+            
+            # Generate TOTP if secret is available
+            totp_code = None
+            if totp_secret and TOTP_AVAILABLE:
+                try:
+                    totp_code = generate_totp_from_secret(totp_secret)
+                    logger.info(f"Generated TOTP: {totp_code[:2]}**** (length: {len(totp_code)})")
+                except Exception as e:
+                    logger.error(f"Failed to generate TOTP: {e}")
+                    logger.error(f"TOTP Secret format issue - check if it's a valid base32 string")
+            elif not totp_secret:
+                logger.warning("No TOTP secret provided, will use password as TOTP (legacy mode)")
+            elif not TOTP_AVAILABLE:
+                logger.error("TOTP module not available, cannot generate TOTP")
             
             # Attempt login
+            logger.info(f"Attempting login with clientCode={client_id}, totp_code={'generated' if totp_code else 'using_password'}")
             session_data = self.smartapi.generateSession(
-                clientcode=Settings.SMARTAPI_USERNAME,
-                password=Settings.SMARTAPI_PASSWORD,
-                totp=Settings.SMARTAPI_PASSWORD  # Some implementations use TOTP
+                clientCode=client_id,
+                password=password,
+                totp=totp_code if totp_code else password
             )
             
             if session_data['status']:
@@ -363,8 +407,9 @@ class WebSocketFeedHandler:
             
             self.ws = SmartWebSocketV2(
                 auth_token=self.auth_token,
-                feed_token=self.feed_token,
-                client_code=Settings.SMARTAPI_USERNAME
+                api_key=Settings.API_KEY,
+                client_code=Settings.CLIENT_ID,
+                feed_token=self.feed_token
             )
             
             # Set up event handlers
