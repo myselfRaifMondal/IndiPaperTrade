@@ -111,7 +111,7 @@ class WebSocketDataEngine:
             self.ws.on_message = self._on_message
             self.ws.on_error = self._on_error
             self.ws.on_close = self._on_close
-            self.ws.on_data = self._on_data
+            self.ws.on_data = self._on_data_callback  # Use correct callback name
             
             # Connect in background thread
             self._running = True
@@ -231,20 +231,17 @@ class WebSocketDataEngine:
         """Handle WebSocket text messages."""
         logger.debug(f"WebSocket message: {message}")
     
-    def _on_data(self, wsapp, message, data_type, continue_flag):
+    def _on_data_callback(self, wsapp, parsed_data):
         """
-        Handle WebSocket binary data (tick data).
+        Handle WebSocket parsed data (tick data).
+        
+        This is called by SmartWebSocketV2 AFTER it has already parsed the binary data.
         
         Args:
             wsapp: WebSocket app instance
-            message: Binary message data
-            data_type: Data type (binary/text)
-            continue_flag: Continuation flag
+            parsed_data: Already parsed dictionary from SmartWebSocketV2
         """
         try:
-            # Parse the binary data
-            parsed_data = self.ws._parse_binary_data(message)
-            
             if not parsed_data:
                 return
             
