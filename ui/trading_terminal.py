@@ -6,6 +6,7 @@ Professional trading terminal interface with:
 - Order placement panel (Buy/Sell)
 - Portfolio and positions viewer
 - Order book and trade history
+- Modern professional dark mode theme
 """
 
 import sys
@@ -20,7 +21,7 @@ from PyQt6.QtWidgets import (
     QGroupBox, QMessageBox, QHeaderView, QStatusBar
 )
 from PyQt6.QtCore import QTimer, Qt, pyqtSignal, QThread
-from PyQt6.QtGui import QFont, QColor
+from PyQt6.QtGui import QFont, QColor, QIcon
 
 # Add parent directory to path for imports
 import os
@@ -32,6 +33,12 @@ from execution_engine import OrderSimulator, OrderSide, OrderType
 from portfolio_engine import PortfolioManager
 from database import Database
 from utils.market_hours import MarketHoursChecker, get_market_status_message
+from utils.rss_feed_manager import RSSFeedManager
+from ui.styles import (
+    MAIN_STYLESHEET, MARKET_CLOCK_STYLESHEET, ORDER_PANEL_STYLESHEET,
+    MARKET_WATCH_STYLESHEET, POSITIONS_WIDGET_STYLESHEET,
+    MARGIN_INFO_STYLESHEET, ORDER_BOOK_STYLESHEET, COLORS, STATUS_COLORS
+)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -83,7 +90,7 @@ class PriceUpdateHandler(QThread):
 
 
 class MarketWatchWidget(QWidget):
-    """Market watch panel with live price updates."""
+    """Market watch panel with live price updates and professional styling."""
     
     symbol_selected = pyqtSignal(str)  # Emit when symbol is selected
     symbol_added = pyqtSignal(str)  # Emit when new symbol is added
@@ -91,15 +98,11 @@ class MarketWatchWidget(QWidget):
     def __init__(self):
         super().__init__()
         self.init_ui()
+        self.setStyleSheet(MARKET_WATCH_STYLESHEET)
         
     def init_ui(self):
+        group_box = QGroupBox("Market Watch - Live Quotes")
         layout = QVBoxLayout()
-        
-        # Title
-        title = QLabel("MARKET WATCH")
-        title.setFont(QFont("Arial", 12, QFont.Weight.Bold))
-        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(title)
         
         # Table
         self.table = QTableWidget()
@@ -108,23 +111,33 @@ class MarketWatchWidget(QWidget):
             "Symbol", "LTP", "Change", "Change %", "Bid", "Ask"
         ])
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.table.horizontalHeader().setFont(QFont("Arial", 10, QFont.Weight.Bold))
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
+        self.table.setAlternatingRowColors(False)
         self.table.cellClicked.connect(self.on_row_clicked)
-        
         layout.addWidget(self.table)
         
         # Add symbol controls
         add_layout = QHBoxLayout()
         self.symbol_input = QLineEdit()
         self.symbol_input.setPlaceholderText("Enter symbol (e.g., RELIANCE)")
-        add_btn = QPushButton("Add Symbol")
+        self.symbol_input.setMaximumHeight(35)
+        
+        add_btn = QPushButton("+ Add Symbol")
+        add_btn.setMaximumWidth(150)
+        add_btn.setMaximumHeight(35)
         add_btn.clicked.connect(self.add_symbol_clicked)
         
         add_layout.addWidget(self.symbol_input)
         add_layout.addWidget(add_btn)
         layout.addLayout(add_layout)
         
-        self.setLayout(layout)
+        group_box.setLayout(layout)
+        main_layout = QVBoxLayout()
+        main_layout.addWidget(group_box)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        self.setLayout(main_layout)
         
         # Symbol to row mapping
         self.symbol_rows = {}
@@ -138,18 +151,22 @@ class MarketWatchWidget(QWidget):
         self.table.insertRow(row)
         self.symbol_rows[symbol] = row
         
-        # Initialize cells
-        self.table.setItem(row, 0, QTableWidgetItem(symbol))
+        # Initialize cells with professional styling
+        symbol_item = QTableWidgetItem(symbol)
+        symbol_item.setFont(QFont("Arial", 10, QFont.Weight.Bold))
+        self.table.setItem(row, 0, symbol_item)
+        
         for col in range(1, 6):
             item = QTableWidgetItem("-")
-            item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            item.setTextAlignment(Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter)
+            item.setFont(QFont("Arial", 10))
             self.table.setItem(row, col, item)
         
         # Emit signal for new symbol
         self.symbol_added.emit(symbol)
     
     def update_price(self, symbol: str, ltp: float, change: float, change_pct: float):
-        """Update price for a symbol."""
+        """Update price for a symbol with color coding."""
         if symbol not in self.symbol_rows:
             return
         
@@ -167,10 +184,15 @@ class MarketWatchWidget(QWidget):
         change_pct_item = self.table.item(row, 3)
         change_pct_item.setText(f"{change_pct:+.2f}%")
         
-        # Color coding
-        color = QColor(0, 200, 0) if change >= 0 else QColor(200, 0, 0)
+        # Color coding - green for positive, red for negative
+        if change >= 0:
+            color = QColor(16, 185, 129)  # Green
+        else:
+            color = QColor(239, 68, 68)  # Red
+        
         for col in [1, 2, 3]:
             self.table.item(row, col).setForeground(color)
+            self.table.item(row, col).setFont(QFont("Arial", 10, QFont.Weight.Bold))
     
     def add_symbol_clicked(self):
         """Handle add symbol button click."""
@@ -186,12 +208,134 @@ class MarketWatchWidget(QWidget):
             self.symbol_selected.emit(symbol_item.text())
 
 
+class NewsFeedWidget(QWidget):
+    """RSS News Feed Widget - displays live market news from multiple sources."""
+    
+    def __init__(self, rss_manager: RSSFeedManager):
+        super().__init__()
+        self.rss_manager = rss_manager
+        self.current_index = 0
+        self.init_ui()
+        
+        # Update timer for rotating news
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.update_news_display)
+        self.timer.start(8000)  # Rotate news every 8 seconds
+        
+        # Initial display
+        self.update_news_display()
+    
+    def init_ui(self):
+        group_box = QGroupBox("Market News - Live Feed")
+        layout = QVBoxLayout()
+        
+        # News display area with scrolling
+        self.news_label = QLabel("Loading news feeds...")
+        self.news_label.setFont(QFont("Arial", 10))
+        self.news_label.setStyleSheet(f"""
+            color: {COLORS['text_primary']};
+            padding: 12px;
+            background-color: {COLORS['bg_darker']};
+            border-radius: 4px;
+            border: 1px solid {COLORS['border']};
+        """)
+        self.news_label.setWordWrap(True)
+        self.news_label.setMinimumHeight(80)
+        self.news_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        layout.addWidget(self.news_label)
+        
+        # Status label
+        self.status_label = QLabel("Fetching latest news...")
+        self.status_label.setFont(QFont("Arial", 9))
+        self.status_label.setStyleSheet(f"color: {COLORS['text_tertiary']}; padding: 5px;")
+        layout.addWidget(self.status_label)
+        
+        group_box.setLayout(layout)
+        main_layout = QVBoxLayout()
+        main_layout.addWidget(group_box)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        self.setLayout(main_layout)
+    
+    def update_news_display(self):
+        """Update news display with rotating items."""
+        items = self.rss_manager.get_latest_items(count=20)
+        
+        if not items:
+            self.news_label.setText("No news available. Feeds will update shortly...")
+            self.status_label.setText("Waiting for updates...")
+            return
+        
+        # Show current item with details
+        if self.current_index >= len(items):
+            self.current_index = 0
+        
+        current_item = items[self.current_index]
+        
+        # Format news item with color coding for source
+        source_colors = {
+            "NSE": COLORS['primary_light'],
+            "BSE": COLORS['accent_green'],
+            "RBI": COLORS['accent_orange'],
+            "SEBI": COLORS['accent_yellow'],
+            "MoneyControl": COLORS['primary'],
+            "Economic Times": COLORS['text_primary'],
+            "Live Mint": COLORS['text_primary'],
+        }
+        
+        # Get source color
+        source_color = COLORS['primary_light']
+        for key, color in source_colors.items():
+            if key in current_item.source:
+                source_color = color
+                break
+        
+        # Format display with HTML for rich text
+        news_html = f"""
+        <div style='line-height: 1.6;'>
+            <p style='margin: 0 0 8px 0;'>
+                <span style='color: {source_color}; font-weight: bold; font-size: 11px;'>
+                    [{current_item.source}]
+                </span>
+                <span style='color: {COLORS['text_tertiary']}; font-size: 9px; margin-left: 10px;'>
+                    {current_item.published[:16] if current_item.published else 'Now'}
+                </span>
+            </p>
+            <p style='margin: 0; color: {COLORS['text_primary']}; font-size: 11px; font-weight: bold;'>
+                {current_item.title}
+            </p>
+        </div>
+        """
+        
+        self.news_label.setText(news_html)
+        
+        # Update status
+        status = self.rss_manager.get_feed_status()
+        last_update = status['last_update']
+        if last_update:
+            time_str = last_update.strftime("%H:%M:%S")
+            self.status_label.setText(f"Last updated: {time_str} | Showing {self.current_index + 1}/{len(items)} items")
+        else:
+            self.status_label.setText(f"Showing {self.current_index + 1}/{len(items)} items")
+        
+        # Move to next item
+        self.current_index += 1
+    
+    def refresh_feeds(self):
+        """Manually refresh RSS feeds."""
+        self.status_label.setText("Refreshing feeds...")
+        self.rss_manager.update_feeds()
+        self.current_index = 0
+        self.update_news_display()
+
+
+
 class MarketClockWidget(QWidget):
-    """Market hours clock and status display."""
+    """Market hours clock and status display with professional styling."""
     
     def __init__(self):
         super().__init__()
         self.init_ui()
+        self.setStyleSheet(MARKET_CLOCK_STYLESHEET)
         
         # Update timer
         self.timer = QTimer()
@@ -199,56 +343,83 @@ class MarketClockWidget(QWidget):
         self.timer.start(1000)  # Update every second
     
     def init_ui(self):
+        group_box = QGroupBox("Market Clock (IST)")
         layout = QVBoxLayout()
         
-        # Current time
+        # Current time - large prominent display
         self.time_label = QLabel("00:00:00")
-        self.time_label.setFont(QFont("Arial", 16, QFont.Weight.Bold))
+        self.time_label.setObjectName("clockLabel")
+        self.time_label.setFont(QFont("Courier New", 32, QFont.Weight.Bold))
         self.time_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.time_label)
         
-        # Market status
+        # Market status - color coded badge
+        status_layout = QHBoxLayout()
+        status_layout.addStretch()
         self.status_label = QLabel("MARKET CLOSED")
+        self.status_label.setObjectName("statusLabel")
         self.status_label.setFont(QFont("Arial", 12, QFont.Weight.Bold))
         self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.status_label.setStyleSheet("color: red;")
-        layout.addWidget(self.status_label)
+        self.status_label.setStyleSheet(f"""
+            background-color: {COLORS['status_closed']};
+            color: white;
+            border-radius: 6px;
+            padding: 10px 20px;
+            font-size: 13px;
+        """)
+        status_layout.addWidget(self.status_label)
+        status_layout.addStretch()
+        layout.addLayout(status_layout)
         
         # Status message
         self.message_label = QLabel("")
-        self.message_label.setFont(QFont("Arial", 9))
+        self.message_label.setObjectName("timeMessageLabel")
+        self.message_label.setFont(QFont("Arial", 10))
         self.message_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.message_label.setWordWrap(True)
         layout.addWidget(self.message_label)
         
-        self.setLayout(layout)
+        group_box.setLayout(layout)
+        main_layout = QVBoxLayout()
+        main_layout.addWidget(group_box)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        self.setLayout(main_layout)
+        
         self.update_time()
     
     def update_time(self):
-        """Update clock and market status."""
+        """Update clock and market status with professional styling."""
         current_time = MarketHoursChecker.get_current_time()
-        time_str = current_time.strftime("%I:%M:%S %p")
+        time_str = current_time.strftime("%I:%M:%S")
         self.time_label.setText(time_str)
         
         # Update status
         status = MarketHoursChecker.get_market_status()
         message = get_market_status_message()
         
-        if status == "OPEN":
-            self.status_label.setText("MARKET OPEN")
-            self.status_label.setStyleSheet("color: #00AA00; font-weight: bold;")
-        elif status == "PRE_MARKET":
-            self.status_label.setText("PRE-MARKET")
-            self.status_label.setStyleSheet("color: #FF8800; font-weight: bold;")
-        elif status == "POST_MARKET":
-            self.status_label.setText("POST-MARKET")
-            self.status_label.setStyleSheet("color: #FF8800; font-weight: bold;")
-        elif status == "WEEKEND":
-            self.status_label.setText("WEEKEND")
-            self.status_label.setStyleSheet("color: #AA00AA; font-weight: bold;")
+        # Style based on status
+        status_styles = {
+            "OPEN": f"background-color: {COLORS['status_open']}; color: white; border-radius: 6px; padding: 10px 20px; font-size: 13px; font-weight: bold;",
+            "PRE_MARKET": f"background-color: {COLORS['status_premarket']}; color: white; border-radius: 6px; padding: 10px 20px; font-size: 13px; font-weight: bold;",
+            "POST_MARKET": f"background-color: {COLORS['status_postmarket']}; color: white; border-radius: 6px; padding: 10px 20px; font-size: 13px; font-weight: bold;",
+            "WEEKEND": f"background-color: {COLORS['text_tertiary']}; color: white; border-radius: 6px; padding: 10px 20px; font-size: 13px; font-weight: bold;",
+            "CLOSED": f"background-color: {COLORS['status_closed']}; color: white; border-radius: 6px; padding: 10px 20px; font-size: 13px; font-weight: bold;",
+        }
+        
+        status_map = {
+            "OPEN": ("MARKET OPEN", "OPEN"),
+            "PRE_MARKET": ("PRE-MARKET", "PRE_MARKET"),
+            "POST_MARKET": ("POST-MARKET", "POST_MARKET"),
+            "WEEKEND": ("WEEKEND", "WEEKEND"),
+        }
+        
+        if status in status_map:
+            display_text, style_key = status_map[status]
+            self.status_label.setText(display_text)
+            self.status_label.setStyleSheet(status_styles[style_key])
         else:
             self.status_label.setText("MARKET CLOSED")
-            self.status_label.setStyleSheet("color: #CC0000; font-weight: bold;")
+            self.status_label.setStyleSheet(status_styles["CLOSED"])
         
         self.message_label.setText(message)
     
@@ -258,7 +429,7 @@ class MarketClockWidget(QWidget):
 
 
 class OrderPanel(QWidget):
-    """Order placement panel."""
+    """Order placement panel with professional styling."""
     
     order_placed = pyqtSignal(dict)  # Emit order details
     
@@ -267,105 +438,96 @@ class OrderPanel(QWidget):
         self.current_symbol = ""
         self.current_ltp = 0.0
         self.init_ui()
+        self.setStyleSheet(ORDER_PANEL_STYLESHEET)
         
     def init_ui(self):
+        group_box = QGroupBox("Place Order")
         layout = QVBoxLayout()
         
-        # Title
-        title = QLabel("ORDER ENTRY")
-        title.setFont(QFont("Arial", 12, QFont.Weight.Bold))
-        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(title)
-        
-        # Symbol display
+        # Symbol display - Large and prominent
         symbol_layout = QHBoxLayout()
-        symbol_layout.addWidget(QLabel("Symbol:"))
+        symbol_label_text = QLabel("Symbol:")
+        symbol_label_text.setFont(QFont("Arial", 10))
+        symbol_label_text.setStyleSheet(f"color: {COLORS['text_secondary']};")
         self.symbol_label = QLabel("-")
-        self.symbol_label.setFont(QFont("Arial", 14, QFont.Weight.Bold))
+        self.symbol_label.setFont(QFont("Arial", 18, QFont.Weight.Bold))
+        self.symbol_label.setStyleSheet(f"color: {COLORS['primary_light']};")
+        symbol_layout.addWidget(symbol_label_text)
         symbol_layout.addWidget(self.symbol_label)
         symbol_layout.addStretch()
         layout.addLayout(symbol_layout)
         
         # LTP display
         ltp_layout = QHBoxLayout()
-        ltp_layout.addWidget(QLabel("LTP:"))
+        ltp_label_text = QLabel("LTP:")
+        ltp_label_text.setFont(QFont("Arial", 10))
+        ltp_label_text.setStyleSheet(f"color: {COLORS['text_secondary']};")
         self.ltp_label = QLabel("₹0.00")
-        self.ltp_label.setFont(QFont("Arial", 12))
+        self.ltp_label.setFont(QFont("Arial", 16, QFont.Weight.Bold))
+        self.ltp_label.setStyleSheet(f"color: {COLORS['accent_yellow']};")
+        ltp_layout.addWidget(ltp_label_text)
         ltp_layout.addWidget(self.ltp_label)
         ltp_layout.addStretch()
         layout.addLayout(ltp_layout)
         
+        layout.addSpacing(15)
+        
         # Order type
-        order_type_layout = QHBoxLayout()
-        order_type_layout.addWidget(QLabel("Order Type:"))
+        order_type_label = QLabel("Order Type:")
+        order_type_label.setFont(QFont("Arial", 10))
+        order_type_label.setStyleSheet(f"color: {COLORS['text_secondary']};")
+        layout.addWidget(order_type_label)
+        
         self.order_type_combo = QComboBox()
         self.order_type_combo.addItems(["MARKET", "LIMIT"])
         self.order_type_combo.currentTextChanged.connect(self.on_order_type_changed)
-        order_type_layout.addWidget(self.order_type_combo)
-        layout.addLayout(order_type_layout)
+        self.order_type_combo.setMinimumHeight(35)
+        layout.addWidget(self.order_type_combo)
         
         # Quantity
-        qty_layout = QHBoxLayout()
-        qty_layout.addWidget(QLabel("Quantity:"))
+        qty_label = QLabel("Quantity:")
+        qty_label.setFont(QFont("Arial", 10))
+        qty_label.setStyleSheet(f"color: {COLORS['text_secondary']};")
+        layout.addWidget(qty_label)
+        
         self.quantity_spin = QSpinBox()
         self.quantity_spin.setMinimum(1)
         self.quantity_spin.setMaximum(10000)
         self.quantity_spin.setValue(1)
-        qty_layout.addWidget(self.quantity_spin)
-        layout.addLayout(qty_layout)
+        self.quantity_spin.setMinimumHeight(35)
+        layout.addWidget(self.quantity_spin)
         
         # Price (for limit orders)
-        price_layout = QHBoxLayout()
-        price_layout.addWidget(QLabel("Price:"))
+        price_label = QLabel("Price:")
+        price_label.setFont(QFont("Arial", 10))
+        price_label.setStyleSheet(f"color: {COLORS['text_secondary']};")
+        layout.addWidget(price_label)
+        
         self.price_spin = QDoubleSpinBox()
         self.price_spin.setMinimum(0.05)
         self.price_spin.setMaximum(100000.0)
         self.price_spin.setDecimals(2)
         self.price_spin.setSingleStep(0.05)
         self.price_spin.setEnabled(False)
-        price_layout.addWidget(self.price_spin)
-        layout.addLayout(price_layout)
+        self.price_spin.setMinimumHeight(35)
+        layout.addWidget(self.price_spin)
         
-        # Buy/Sell buttons
+        layout.addSpacing(20)
+        
+        # Buy/Sell buttons - Professional styling
         button_layout = QHBoxLayout()
         
         self.buy_btn = QPushButton("BUY")
-        self.buy_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #0066cc;
-                color: white;
-                font-size: 16px;
-                font-weight: bold;
-                padding: 15px;
-                border-radius: 5px;
-            }
-            QPushButton:hover {
-                background-color: #0052a3;
-            }
-            QPushButton:disabled {
-                background-color: #cccccc;
-            }
-        """)
+        self.buy_btn.setObjectName("buyButton")
+        self.buy_btn.setFont(QFont("Arial", 12, QFont.Weight.Bold))
+        self.buy_btn.setMinimumHeight(50)
         self.buy_btn.clicked.connect(lambda: self.place_order("BUY"))
         self.buy_btn.setEnabled(False)
         
         self.sell_btn = QPushButton("SELL")
-        self.sell_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #cc0000;
-                color: white;
-                font-size: 16px;
-                font-weight: bold;
-                padding: 15px;
-                border-radius: 5px;
-            }
-            QPushButton:hover {
-                background-color: #a30000;
-            }
-            QPushButton:disabled {
-                background-color: #cccccc;
-            }
-        """)
+        self.sell_btn.setObjectName("sellButton")
+        self.sell_btn.setFont(QFont("Arial", 12, QFont.Weight.Bold))
+        self.sell_btn.setMinimumHeight(50)
         self.sell_btn.clicked.connect(lambda: self.place_order("SELL"))
         self.sell_btn.setEnabled(False)
         
@@ -374,7 +536,11 @@ class OrderPanel(QWidget):
         layout.addLayout(button_layout)
         
         layout.addStretch()
-        self.setLayout(layout)
+        group_box.setLayout(layout)
+        main_layout = QVBoxLayout()
+        main_layout.addWidget(group_box)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        self.setLayout(main_layout)
     
     def set_symbol(self, symbol: str, ltp: float = 0.0):
         """Set the current trading symbol."""
@@ -428,6 +594,32 @@ class OrderPanel(QWidget):
         }
         
         self.order_placed.emit(order_details)
+        """Place an order."""
+        # Check market hours
+        if not MarketHoursChecker.is_market_open():
+            status = MarketHoursChecker.get_market_status()
+            QMessageBox.warning(
+                self, 
+                "Trading Not Allowed", 
+                f"Trading is only allowed during market hours (9:15 AM - 3:30 PM IST).\n\n"
+                f"Current Status: {status}\n"
+                f"{get_market_status_message()}"
+            )
+            return
+        
+        if not self.current_symbol:
+            QMessageBox.warning(self, "No Symbol", "Please select a symbol from market watch")
+            return
+        
+        order_details = {
+            "symbol": self.current_symbol,
+            "side": side,
+            "quantity": self.quantity_spin.value(),
+            "order_type": self.order_type_combo.currentText(),
+            "price": self.price_spin.value() if self.order_type_combo.currentText() == "LIMIT" else None
+        }
+        
+        self.order_placed.emit(order_details)
 
 
 class MarginInfoWidget(QWidget):
@@ -436,71 +628,69 @@ class MarginInfoWidget(QWidget):
     def __init__(self):
         super().__init__()
         self.init_ui()
+        self.setStyleSheet(MARGIN_INFO_STYLESHEET)
         
     def init_ui(self):
+        group_box = QGroupBox("Margin & Leverage Info")
         layout = QVBoxLayout()
-        
-        # Title
-        title = QLabel("MARGIN & LEVERAGE INFO")
-        title.setFont(QFont("Arial", 11, QFont.Weight.Bold))
-        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(title)
-        
-        # Info box
-        info_layout = QVBoxLayout()
-        info_layout.setSpacing(8)
         
         # Available Margin
         margin_layout = QHBoxLayout()
         margin_label = QLabel("Available Margin:")
         margin_label.setFont(QFont("Arial", 10))
+        margin_label.setStyleSheet(f"color: {COLORS['text_secondary']};")
         self.margin_value = QLabel("₹100,000.00")
-        self.margin_value.setFont(QFont("Arial", 10, QFont.Weight.Bold))
-        self.margin_value.setStyleSheet("color: #00AA00;")
+        self.margin_value.setFont(QFont("Arial", 12, QFont.Weight.Bold))
+        self.margin_value.setStyleSheet(f"color: {COLORS['accent_green']};")
         margin_layout.addWidget(margin_label)
         margin_layout.addStretch()
         margin_layout.addWidget(self.margin_value)
-        info_layout.addLayout(margin_layout)
+        layout.addLayout(margin_layout)
         
         # Used Margin
         used_layout = QHBoxLayout()
         used_label = QLabel("Used Margin:")
         used_label.setFont(QFont("Arial", 10))
+        used_label.setStyleSheet(f"color: {COLORS['text_secondary']};")
         self.used_value = QLabel("₹0.00")
-        self.used_value.setFont(QFont("Arial", 10, QFont.Weight.Bold))
-        self.used_value.setStyleSheet("color: #FF6600;")
+        self.used_value.setFont(QFont("Arial", 12, QFont.Weight.Bold))
+        self.used_value.setStyleSheet(f"color: {COLORS['accent_orange']};")
         used_layout.addWidget(used_label)
         used_layout.addStretch()
         used_layout.addWidget(self.used_value)
-        info_layout.addLayout(used_layout)
+        layout.addLayout(used_layout)
         
         # Margin Utilization
         util_layout = QHBoxLayout()
         util_label = QLabel("Margin Utilization:")
         util_label.setFont(QFont("Arial", 10))
+        util_label.setStyleSheet(f"color: {COLORS['text_secondary']};")
         self.util_value = QLabel("0%")
-        self.util_value.setFont(QFont("Arial", 10, QFont.Weight.Bold))
-        self.util_value.setStyleSheet("color: #0066FF;")
+        self.util_value.setFont(QFont("Arial", 12, QFont.Weight.Bold))
+        self.util_value.setStyleSheet(f"color: {COLORS['primary_light']};")
         util_layout.addWidget(util_label)
         util_layout.addStretch()
         util_layout.addWidget(self.util_value)
-        info_layout.addLayout(util_layout)
+        layout.addLayout(util_layout)
         
         # Default Leverage
         leverage_layout = QHBoxLayout()
         leverage_label = QLabel("Default Leverage:")
         leverage_label.setFont(QFont("Arial", 10))
+        leverage_label.setStyleSheet(f"color: {COLORS['text_secondary']};")
         self.leverage_value = QLabel("5.0x")
-        self.leverage_value.setFont(QFont("Arial", 10, QFont.Weight.Bold))
-        self.leverage_value.setStyleSheet("color: #AA00AA;")
+        self.leverage_value.setFont(QFont("Arial", 12, QFont.Weight.Bold))
+        self.leverage_value.setStyleSheet(f"color: {COLORS['accent_yellow']};")
         leverage_layout.addWidget(leverage_label)
         leverage_layout.addStretch()
         leverage_layout.addWidget(self.leverage_value)
-        info_layout.addLayout(leverage_layout)
+        layout.addLayout(leverage_layout)
         
-        layout.addLayout(info_layout)
-        layout.addStretch()
-        self.setLayout(layout)
+        group_box.setLayout(layout)
+        main_layout = QVBoxLayout()
+        main_layout.addWidget(group_box)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        self.setLayout(main_layout)
     
     def update_margin_info(self, available: float, used: float, leverage: float = 5.0):
         """Update margin information."""
@@ -515,11 +705,11 @@ class MarginInfoWidget(QWidget):
         
         # Color code utilization
         if utilization < 30:
-            color = "#00AA00"  # Green
+            color = COLORS['accent_green']
         elif utilization < 70:
-            color = "#FF6600"  # Orange
+            color = COLORS['accent_orange']
         else:
-            color = "#FF0000"  # Red
+            color = COLORS['accent_red']
         self.util_value.setStyleSheet(f"color: {color};")
 
 
@@ -529,15 +719,11 @@ class PositionsWidget(QWidget):
     def __init__(self):
         super().__init__()
         self.init_ui()
+        self.setStyleSheet(POSITIONS_WIDGET_STYLESHEET)
         
     def init_ui(self):
+        group_box = QGroupBox("Open Positions")
         layout = QVBoxLayout()
-        
-        # Title
-        title = QLabel("POSITIONS")
-        title.setFont(QFont("Arial", 12, QFont.Weight.Bold))
-        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(title)
         
         # Table
         self.table = QTableWidget()
@@ -546,9 +732,14 @@ class PositionsWidget(QWidget):
             "Symbol", "Type", "Qty", "Avg Price", "LTP", "Leverage", "Margin Used", "P&L", "P&L %", "Status"
         ])
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.table.setMaximumHeight(250)
         
         layout.addWidget(self.table)
-        self.setLayout(layout)
+        group_box.setLayout(layout)
+        main_layout = QVBoxLayout()
+        main_layout.addWidget(group_box)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        self.setLayout(main_layout)
     
     def update_positions(self, positions: Dict):
         """Update positions table."""
@@ -576,7 +767,11 @@ class PositionsWidget(QWidget):
             pnl_item = QTableWidgetItem(f"₹{position.unrealized_pnl:.2f}")
             pnl_pct_item = QTableWidgetItem(f"{position.pnl_percentage:.2f}%")
             
-            color = QColor(0, 150, 0) if position.unrealized_pnl >= 0 else QColor(150, 0, 0)
+            # Color code P&L
+            if position.unrealized_pnl >= 0:
+                color = QColor(16, 185, 129)  # Green
+            else:
+                color = QColor(239, 68, 68)  # Red
             pnl_item.setForeground(color)
             pnl_pct_item.setForeground(color)
             
@@ -585,7 +780,8 @@ class PositionsWidget(QWidget):
             
             # Status
             status_item = QTableWidgetItem("OPEN")
-            status_item.setForeground(QColor(0, 120, 200))
+            status_item.setForeground(QColor(16, 185, 129))  # Green
+            status_item.setFont(QFont("Arial", 10, QFont.Weight.Bold))
             self.table.setItem(row, 9, status_item)
 
 
@@ -596,15 +792,11 @@ class OrderBookWidget(QWidget):
     def __init__(self):
         super().__init__()
         self.init_ui()
+        self.setStyleSheet(ORDER_BOOK_STYLESHEET)
         
     def init_ui(self):
+        group_box = QGroupBox("Order Book")
         layout = QVBoxLayout()
-        
-        # Title
-        title = QLabel("ORDER BOOK")
-        title.setFont(QFont("Arial", 12, QFont.Weight.Bold))
-        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(title)
         
         # Table
         self.table = QTableWidget()
@@ -613,9 +805,14 @@ class OrderBookWidget(QWidget):
             "Time", "Symbol", "Type", "Side", "Qty", "Price", "Status"
         ])
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.table.setMaximumHeight(200)
         
         layout.addWidget(self.table)
-        self.setLayout(layout)
+        group_box.setLayout(layout)
+        main_layout = QVBoxLayout()
+        main_layout.addWidget(group_box)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        self.setLayout(main_layout)
     
     def add_order(self, order):
         """Add order to the book."""
@@ -645,12 +842,19 @@ class OrderBookWidget(QWidget):
 
 
 class TradingTerminal(QMainWindow):
-    """Main trading terminal window."""
+    """Main trading terminal window with professional dark mode styling."""
     
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("IndiPaperTrade - Trading Terminal")
-        self.setGeometry(100, 100, 1400, 900)
+        self.setWindowTitle("IndiPaperTrade - Professional Trading Terminal")
+        self.setGeometry(50, 50, 1600, 1000)
+        self.setMinimumSize(1200, 800)
+        
+        # Apply professional stylesheet
+        self.setStyleSheet(MAIN_STYLESHEET)
+        
+        # Initialize RSS feed manager
+        self.rss_manager = RSSFeedManager(max_items=50)
         
         # Initialize engines
         self.market_data_engine = None
@@ -664,6 +868,9 @@ class TradingTerminal(QMainWindow):
         self.init_ui()
         self.init_engines()
         
+        # Start RSS feed auto-update (every 5 minutes)
+        self.rss_manager.start_auto_update(interval=300)
+        
     def init_ui(self):
         """Initialize UI components."""
         central_widget = QWidget()
@@ -671,9 +878,13 @@ class TradingTerminal(QMainWindow):
         
         main_layout = QVBoxLayout()
         
-        # Top bar - Market Clock
+        # Top bar - Market Clock and News Feed side by side
+        top_bar_layout = QHBoxLayout()
         self.market_clock = MarketClockWidget()
-        main_layout.addWidget(self.market_clock)
+        self.news_feed = NewsFeedWidget(self.rss_manager)
+        top_bar_layout.addWidget(self.market_clock, 1)
+        top_bar_layout.addWidget(self.news_feed, 2)
+        main_layout.addLayout(top_bar_layout)
         
         # Main trading panel
         trading_layout = QHBoxLayout()
@@ -953,6 +1164,12 @@ class TradingTerminal(QMainWindow):
     
     def closeEvent(self, event):
         """Handle window close."""
+        try:
+            if self.rss_manager:
+                self.rss_manager.stop_auto_update()
+        except Exception as e:
+            logger.error(f"Error stopping RSS feed manager: {e}")
+        
         try:
             if self.price_handler:
                 self.price_handler.stop()

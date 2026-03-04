@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IndiPaperTrade - News Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #0A0E27 0%, #1a1f3a 100%);
+            color: #E4E7EB;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        header {
+            text-align: center;
+            padding: 30px 0;
+            margin-bottom: 30px;
+            border-bottom: 2px solid #2D3250;
+        }
+
+        h1 {
+            font-size: 2.5em;
+            color: #4CC9F0;
+            margin-bottom: 10px;
+            text-shadow: 0 0 10px rgba(76, 201, 240, 0.3);
+        }
+
+        .subtitle {
+            color: #9CA3AF;
+            font-size: 1.1em;
+        }
+
+        .status-bar {
+            background: #1a1f3a;
+            border: 1px solid #2D3250;
+            border-radius: 8px;
+            padding: 15px 25px;
+            margin-bottom: 25px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+
+        .status-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .status-label {
+            color: #9CA3AF;
+            font-size: 0.9em;
+        }
+
+        .status-value {
+            color: #4CC9F0;
+            font-weight: 600;
+        }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #10B981;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .refresh-btn {
+            background: #4CC9F0;
+            color: #0A0E27;
+            border: none;
+            padding: 8px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+
+        .refresh-btn:hover {
+            background: #3DB8DF;
+            transform: translateY(-2px);
+        }
+
+        .news-container {
+            background: #1a1f3a;
+            border: 1px solid #2D3250;
+            border-radius: 12px;
+            padding: 20px;
+            max-height: calc(100vh - 300px);
+            overflow-y: auto;
+            scroll-behavior: smooth;
+        }
+
+        .news-container::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .news-container::-webkit-scrollbar-track {
+            background: #0A0E27;
+            border-radius: 4px;
+        }
+
+        .news-container::-webkit-scrollbar-thumb {
+            background: #4CC9F0;
+            border-radius: 4px;
+        }
+
+        .news-item {
+            background: #0A0E27;
+            border: 1px solid #2D3250;
+            border-left: 4px solid #4CC9F0;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 15px;
+            transition: all 0.3s;
+            cursor: pointer;
+        }
+
+        .news-item:hover {
+            border-left-color: #10B981;
+            transform: translateX(5px);
+            box-shadow: 0 4px 12px rgba(76, 201, 240, 0.2);
+        }
+
+        .news-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 12px;
+            gap: 15px;
+        }
+
+        .news-title {
+            color: #E4E7EB;
+            font-size: 1.15em;
+            font-weight: 600;
+            line-height: 1.4;
+            flex: 1;
+        }
+
+        .news-source {
+            background: #2D3250;
+            color: #4CC9F0;
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-size: 0.85em;
+            white-space: nowrap;
+            font-weight: 600;
+        }
+
+        .news-meta {
+            display: flex;
+            gap: 20px;
+            color: #9CA3AF;
+            font-size: 0.9em;
+            margin-bottom: 10px;
+        }
+
+        .news-summary {
+            color: #D1D5DB;
+            line-height: 1.6;
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid #2D3250;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #9CA3AF;
+        }
+
+        .spinner {
+            border: 3px solid #2D3250;
+            border-top: 3px solid #4CC9F0;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #9CA3AF;
+        }
+
+        .empty-state svg {
+            width: 80px;
+            height: 80px;
+            margin-bottom: 20px;
+            opacity: 0.5;
+        }
+
+        .error-message {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid #EF4444;
+            color: #FCA5A5;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        /* Source colors */
+        .source-nse { background: #3B82F6; color: white; }
+        .source-bse { background: #10B981; color: white; }
+        .source-rbi { background: #F59E0B; color: white; }
+        .source-sebi { background: #8B5CF6; color: white; }
+        .source-moneycontrol { background: #EC4899; color: white; }
+        .source-et { background: #EF4444; color: white; }
+        .source-mint { background: #06B6D4; color: white; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>📈 IndiPaperTrade</h1>
+            <p class="subtitle">Real-time Indian Financial Markets News</p>
+        </header>
+
+        <div class="status-bar">
+            <div class="status-item">
+                <div class="status-dot"></div>
+                <span class="status-label">Status:</span>
+                <span class="status-value" id="service-status">Loading...</span>
+            </div>
+            <div class="status-item">
+                <span class="status-label">News Items:</span>
+                <span class="status-value" id="news-count">0</span>
+            </div>
+            <div class="status-item">
+                <span class="status-label">Last Updated:</span>
+                <span class="status-value" id="last-update">Never</span>
+            </div>
+            <button class="refresh-btn" onclick="forceRefresh()">Refresh Now</button>
+        </div>
+
+        <div id="error-container"></div>
+        
+        <div class="news-container" id="news-container">
+            <div class="loading">
+                <div class="spinner"></div>
+                <p>Loading news...</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let lastSeenId = null;
+        let isRefreshing = false;
+
+        function getSourceClass(source) {
+            const sourceMap = {
+                'NSE': 'source-nse',
+                'BSE': 'source-bse',
+                'RBI': 'source-rbi',
+                'SEBI': 'source-sebi',
+                'MoneyControl': 'source-moneycontrol',
+                'Economic Times': 'source-et',
+                'Live Mint': 'source-mint'
+            };
+            
+            for (const [key, className] of Object.entries(sourceMap)) {
+                if (source.includes(key)) {
+                    return className;
+                }
+            }
+            return '';
+        }
+
+        function formatTime(dateStr) {
+            try {
+                const date = new Date(dateStr);
+                const now = new Date();
+                const diff = (now - date) / 1000; // seconds
+
+                if (diff < 60) return 'Just now';
+                if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+                if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+                return date.toLocaleDateString('en-IN');
+            } catch {
+                return dateStr;
+            }
+        }
+
+        function createNewsItem(item) {
+            const div = document.createElement('div');
+            div.className = 'news-item';
+            div.onclick = () => window.open(item.url, '_blank');
+            
+            const sourceClass = getSourceClass(item.source);
+            
+            div.innerHTML = `
+                <div class="news-header">
+                    <div class="news-title">${item.title}</div>
+                    <span class="news-source ${sourceClass}">${item.source}</span>
+                </div>
+                <div class="news-meta">
+                    <span>🕒 ${formatTime(item.published)}</span>
+                </div>
+                ${item.summary ? `<div class="news-summary">${item.summary}</div>` : ''}
+            `;
+            
+            return div;
+        }
+
+        async function fetchNews() {
+            if (isRefreshing) return;
+            isRefreshing = true;
+
+            try {
+                const response = await fetch('/api/news');
+                if (!response.ok) throw new Error('Failed to fetch news');
+                
+                const data = await response.json();
+                
+                // Update status
+                document.getElementById('service-status').textContent = 'Active';
+                document.getElementById('news-count').textContent = data.count;
+                document.getElementById('last-update').textContent = formatTime(data.last_updated);
+                
+                // Clear error
+                document.getElementById('error-container').innerHTML = '';
+                
+                // Update news
+                const container = document.getElementById('news-container');
+                
+                if (data.news.length === 0) {
+                    container.innerHTML = `
+                        <div class="empty-state">
+                            <p>No news available at the moment.</p>
+                        </div>
+                    `;
+                } else {
+                    container.innerHTML = '';
+                    data.news.forEach(item => {
+                        container.appendChild(createNewsItem(item));
+                    });
+                    
+                    // Update last seen ID
+                    if (data.news.length > 0) {
+                        lastSeenId = data.news[0].id;
+                    }
+                }
+                
+            } catch (error) {
+                console.error('Error fetching news:', error);
+                document.getElementById('error-container').innerHTML = `
+                    <div class="error-message">
+                        ⚠️ Error loading news: ${error.message}
+                    </div>
+                `;
+                document.getElementById('service-status').textContent = 'Error';
+            } finally {
+                isRefreshing = false;
+            }
+        }
+
+        async function forceRefresh() {
+            try {
+                await fetch('/api/news/refresh', { method: 'POST' });
+                await fetchNews();
+            } catch (error) {
+                console.error('Error forcing refresh:', error);
+            }
+        }
+
+        // Initial fetch
+        fetchNews();
+
+        // Auto-refresh every 30 seconds
+        setInterval(fetchNews, 30000);
+    </script>
+</body>
+</html>

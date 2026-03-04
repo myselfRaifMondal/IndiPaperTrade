@@ -29,6 +29,13 @@ pytz
 # HTTP requests
 requests
 
+# RSS feed parsing
+feedparser
+
+# Flask web framework
+Flask>=3.0.0
+Flask-CORS>=4.0.0
+
 # JSON handling (optional, standard library but good to be explicit)
 # json is built-in
 
