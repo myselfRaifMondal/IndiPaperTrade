@@ -12,12 +12,14 @@ A professional-grade **PyQt6-based trading terminal** with real-time market data
 
 ### Trading Terminal UI
 - **Professional 3-panel layout** with resizable windows
+- **Market Clock Widget** - Real-time IST clock with market status (OPEN/CLOSED/PRE_MARKET/POST_MARKET)
 - **Live Market Watch** with real-time price updates (6 updates/sec via WebSocket)
-- **Order Entry Panel** for market and limit orders (BUY/SELL)
+- **Order Entry Panel** for advanced order types (Market, Limit, Stop Loss, Stop Limit, Bracket)
 - **Portfolio Dashboard** with position tracking
 - **Margin & Leverage Info** (5x leverage support)
 - **Order Book** for trade history and execution tracking
 - **Dynamic symbol subscription** - add/remove assets on-the-fly
+- **Market Hours Enforcement** - Trading restricted to 9:15 AM - 3:30 PM IST
 
 ### Real-Time Data Streaming
 - **WebSocket** for tick-by-tick updates (~100-200ms latency)
@@ -26,19 +28,40 @@ A professional-grade **PyQt6-based trading terminal** with real-time market data
 - **Automatic reconnection** with exponential backoff
 - **Binary tick parsing** for Angel One's SmartWebSocketV2
 
-### Trading Engine
-- **Market & Limit Orders** with realistic fills
-- **Order Simulation** with optional slippage & spread
+### Advanced Trading Engine
+- **5 Order Types**: Market, Limit, Stop Loss, Stop Limit, Bracket orders
+- **Order Lifecycle Management** - PENDING → OPEN → TRIGGERED → FILLED
+- **Partial Fill Support** with remaining quantity tracking
+- **Order Simulation** with realistic fills, slippage & spread
 - **Real-time P&L tracking** with position averaging
 - **Position Management** (LONG/SHORT, OPEN/CLOSED)
 - **Commission calculations** with configurable rates
 
-### Portfolio Management
+### Portfolio Management & Risk
 - **5x Leverage Support** - 1:5 margin multiplier
 - **Margin tracking** - available, used, utilization %
-- **PnL calculations** - realized, unrealized, total ROI
-- **Portfolio valuation** - current value vs. entry value
-- **Position averaging** - smart entry price management
+- **PnL Engine** - Realized/Unrealized PnL, daily PnL tracking
+- **Risk Metrics**:
+  - Maximum drawdown tracking (₹ & %)
+  - Win rate calculation
+  - Profit factor monitoring
+  - Sharpe ratio (risk-adjusted returns)
+  - Daily loss limits (default 3%)
+  - Position exposure tracking
+- **Performance Analytics**:
+  - Trade statistics (wins/losses)
+  - Average profit/loss per trade
+  - Largest win/loss tracking
+  - Average holding time
+  - ROI calculation
+
+### Alert & Notification System
+- **Price Alerts** - Trigger on price levels (ABOVE/BELOW)
+- **Trade Alerts** - Order fills, stop loss hits
+- **Risk Alerts** - Daily loss exceeded, drawdown threshold
+- **System Alerts** - Connection lost, data interruption
+- **Priority Levels** - LOW, MEDIUM, HIGH, CRITICAL
+- **Callback Support** - Custom handlers for alert events
 
 ### Database & Persistence
 - **SQLAlchemy ORM** for data persistence
@@ -174,16 +197,35 @@ IndiPaperTrade/
 ├── data_engine/
 │   ├── market_data.py             # REST API engine
 │   └── websocket_data.py          # WebSocket streaming
+├── execution/
+│   ├── order_types.py             # Advanced order types (Market, Limit, Stop, Bracket)
+│   └── __init__.py
 ├── execution_engine/
 │   └── order_simulator.py         # Order fill logic
+├── portfolio/
+│   ├── pnl_engine.py              # PnL calculations (realized/unrealized)
+│   └── __init__.py
 ├── portfolio_engine/
 │   └── portfolio_manager.py       # Position tracking, PnL
+├── risk/
+│   ├── risk_engine.py             # Risk metrics (drawdown, Sharpe, profit factor)
+│   └── __init__.py
+├── analytics/
+│   ├── performance_analyzer.py    # Trade statistics & performance metrics
+│   └── __init__.py
+├── alerts/
+│   ├── alert_manager.py           # Alert system (price, trade, risk alerts)
+│   └── __init__.py
+├── utils/
+│   └── market_hours.py            # Market hours checking (9:15 AM - 3:30 PM IST)
 ├── database/
 │   ├── database.py                # SQLAlchemy DB manager
 │   ├── models.py                  # Order, Position, Trade models
 │   └── __init__.py
 ├── config/
 │   └── settings.py                # Configuration
+├── examples/
+│   └── advanced_trading_features.py  # Examples for all advanced components
 ├── run_terminal.py                # Entry point
 ├── requirements.txt               # Dependencies
 └── README.md
@@ -193,8 +235,114 @@ IndiPaperTrade/
 
 ## 📊 Key Components
 
+### Market Hours & Clock
+Real-time market status with IST timezone:
+```python
+from utils.market_hours import MarketHoursChecker, get_market_status_message
+
+status = MarketHoursChecker.get_market_status()  # OPEN/CLOSED/PRE_MARKET/WEEKEND
+is_open = MarketHoursChecker.is_market_open()    # True only 9:15 AM - 3:30 PM IST
+message = get_market_status_message()            # Human-readable status
+```
+
+### Advanced Order Types
+```python
+from execution.order_types import OrderFactory, OrderSide
+
+# Market order
+market = OrderFactory.create_market_order("RELIANCE", OrderSide.BUY, 10)
+
+# Limit order
+limit = OrderFactory.create_limit_order("TCS", OrderSide.SELL, 5, 3500.0)
+
+# Stop loss order
+stop = OrderFactory.create_stop_loss_order("INFY", OrderSide.SELL, 20, 1400.0)
+
+# Stop limit order
+stop_limit = OrderFactory.create_stop_limit_order("HDFCBANK", OrderSide.BUY, 15, 1600.0, 1605.0)
+
+# Bracket order (entry + SL + TP)
+bracket = OrderFactory.create_bracket_order("SBIN", OrderSide.BUY, 50, 600.0, 595.0, 605.0)
+```
+
+### PnL Engine
+```python
+from portfolio.pnl_engine import PnLEngine
+
+pnl_engine = PnLEngine()
+
+# Unrealized PnL
+unrealized = pnl_engine.calculate_unrealized_pnl(
+    entry_price=1340.0,
+    current_price=1360.0,
+    quantity=10,
+    side="LONG"
+)
+
+# Realized PnL
+realized = pnl_engine.calculate_realized_pnl(
+    entry_price=1340.0,
+    exit_price=1360.0,
+    quantity=10,
+    side="LONG",
+    commission=50.0
+)
+```
+
+### Risk Engine
+```python
+from risk.risk_engine import RiskEngine
+
+risk = RiskEngine(initial_capital=100000, max_daily_loss_pct=3.0)
+
+# Update equity
+risk.update_equity(current_equity)
+
+# Get risk metrics
+drawdown = risk.max_drawdown           # Maximum loss from peak
+drawdown_pct = risk.max_drawdown_pct  # As percentage
+sharpe = risk.calculate_sharpe_ratio() # Risk-adjusted return
+profit_factor = risk.calculate_profit_factor(trades)  # Profit/Loss ratio
+
+# Check daily loss limit
+exceeded = risk.check_daily_loss_limit(daily_pnl)
+```
+
+### Performance Analyzer
+```python
+from analytics.performance_analyzer import PerformanceAnalyzer
+
+analyzer = PerformanceAnalyzer()
+analyzer.add_trade(entry_price, exit_price, quantity)
+
+metrics = analyzer.get_metrics()
+print(f"Win Rate: {metrics.win_rate:.2%}")
+print(f"Avg Profit: ₹{metrics.avg_profit:,.2f}")
+print(f"ROI: {metrics.roi:.2%}")
+```
+
+### Alert System
+```python
+from alerts.alert_manager import AlertManager, AlertType, AlertPriority
+
+alert_mgr = AlertManager()
+
+# Price alert
+alert_mgr.add_price_alert("NIFTY", 22500.0, "ABOVE")
+
+# Trade alert
+alert_mgr.alert_order_filled("RELIANCE", "BUY", 10, 2750.0)
+
+# Risk alert
+alert_mgr.alert_daily_loss_exceeded(daily_loss=3500, limit=3000)
+
+# Get all alerts
+for alert in alert_mgr.alerts:
+    print(f"[{alert.priority}] {alert.title}: {alert.message}")
+```
+
 ### WebSocketDataEngine
-Real-time price streaming with binary tick parsing:
+Real-time price streaming:
 ```python
 from data_engine.websocket_data import WebSocketDataEngine
 
@@ -206,7 +354,7 @@ ws.register_callback(on_price_update)
 ```
 
 ### PortfolioManager
-Track positions and calculate PnL with 5x leverage:
+Track positions with 5x leverage:
 ```python
 portfolio = PortfolioManager(
     initial_capital=100000,
@@ -287,6 +435,16 @@ SPREAD_MODE = True        # Enable spread
 ---
 
 ## 🔄 Recent Updates
+
+✅ **v2.0 Institutional-Grade Features Released**
+- Market Hours Widget - Real-time IST clock with status display
+- Trading Hours Enforcement - 9:15 AM - 3:30 PM IST only
+- Advanced Order Types - Market, Limit, Stop Loss, Stop Limit, Bracket orders
+- PnL Engine - Realized/Unrealized PnL tracking with daily snapshots
+- Risk Management Engine - Drawdown, Sharpe ratio, profit factor, daily loss limits
+- Performance Analyzer - Trade statistics, win rate, ROI calculation
+- Alert System - Price, trade, risk, and system alerts with priorities
+- Example Scripts - Comprehensive examples for all advanced features
 
 ✅ **v1.0 Released**
 - Trading Terminal UI with 3-panel layout

@@ -31,6 +31,7 @@ from data_engine.websocket_data import WebSocketDataEngine
 from execution_engine import OrderSimulator, OrderSide, OrderType
 from portfolio_engine import PortfolioManager
 from database import Database
+from utils.market_hours import MarketHoursChecker, get_market_status_message
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -185,6 +186,77 @@ class MarketWatchWidget(QWidget):
             self.symbol_selected.emit(symbol_item.text())
 
 
+class MarketClockWidget(QWidget):
+    """Market hours clock and status display."""
+    
+    def __init__(self):
+        super().__init__()
+        self.init_ui()
+        
+        # Update timer
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.update_time)
+        self.timer.start(1000)  # Update every second
+    
+    def init_ui(self):
+        layout = QVBoxLayout()
+        
+        # Current time
+        self.time_label = QLabel("00:00:00")
+        self.time_label.setFont(QFont("Arial", 16, QFont.Weight.Bold))
+        self.time_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self.time_label)
+        
+        # Market status
+        self.status_label = QLabel("MARKET CLOSED")
+        self.status_label.setFont(QFont("Arial", 12, QFont.Weight.Bold))
+        self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.status_label.setStyleSheet("color: red;")
+        layout.addWidget(self.status_label)
+        
+        # Status message
+        self.message_label = QLabel("")
+        self.message_label.setFont(QFont("Arial", 9))
+        self.message_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.message_label.setWordWrap(True)
+        layout.addWidget(self.message_label)
+        
+        self.setLayout(layout)
+        self.update_time()
+    
+    def update_time(self):
+        """Update clock and market status."""
+        current_time = MarketHoursChecker.get_current_time()
+        time_str = current_time.strftime("%I:%M:%S %p")
+        self.time_label.setText(time_str)
+        
+        # Update status
+        status = MarketHoursChecker.get_market_status()
+        message = get_market_status_message()
+        
+        if status == "OPEN":
+            self.status_label.setText("MARKET OPEN")
+            self.status_label.setStyleSheet("color: #00AA00; font-weight: bold;")
+        elif status == "PRE_MARKET":
+            self.status_label.setText("PRE-MARKET")
+            self.status_label.setStyleSheet("color: #FF8800; font-weight: bold;")
+        elif status == "POST_MARKET":
+            self.status_label.setText("POST-MARKET")
+            self.status_label.setStyleSheet("color: #FF8800; font-weight: bold;")
+        elif status == "WEEKEND":
+            self.status_label.setText("WEEKEND")
+            self.status_label.setStyleSheet("color: #AA00AA; font-weight: bold;")
+        else:
+            self.status_label.setText("MARKET CLOSED")
+            self.status_label.setStyleSheet("color: #CC0000; font-weight: bold;")
+        
+        self.message_label.setText(message)
+    
+    def is_trading_allowed(self) -> bool:
+        """Check if trading is currently allowed."""
+        return MarketHoursChecker.is_market_open()
+
+
 class OrderPanel(QWidget):
     """Order placement panel."""
     
@@ -331,6 +403,18 @@ class OrderPanel(QWidget):
     
     def place_order(self, side: str):
         """Place an order."""
+        # Check market hours
+        if not MarketHoursChecker.is_market_open():
+            status = MarketHoursChecker.get_market_status()
+            QMessageBox.warning(
+                self, 
+                "Trading Not Allowed", 
+                f"Trading is only allowed during market hours (9:15 AM - 3:30 PM IST).\n\n"
+                f"Current Status: {status}\n"
+                f"{get_market_status_message()}"
+            )
+            return
+        
         if not self.current_symbol:
             QMessageBox.warning(self, "No Symbol", "Please select a symbol from market watch")
             return
@@ -585,7 +669,14 @@ class TradingTerminal(QMainWindow):
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         
-        main_layout = QHBoxLayout()
+        main_layout = QVBoxLayout()
+        
+        # Top bar - Market Clock
+        self.market_clock = MarketClockWidget()
+        main_layout.addWidget(self.market_clock)
+        
+        # Main trading panel
+        trading_layout = QHBoxLayout()
         
         # Left panel - Market Watch
         self.market_watch = MarketWatchWidget()
@@ -615,7 +706,8 @@ class TradingTerminal(QMainWindow):
         splitter.setStretchFactor(1, 1)
         splitter.setStretchFactor(2, 2)
         
-        main_layout.addWidget(splitter)
+        trading_layout.addWidget(splitter)
+        main_layout.addLayout(trading_layout)
         central_widget.setLayout(main_layout)
         
         # Status bar
