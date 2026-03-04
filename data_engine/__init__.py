@@ -1,31 +1,22 @@
 """
 Data Engine Package
 
-Provides real-time market data fetching and caching for IndiPaperTrade.
+Provides market data fetching for IndiPaperTrade.
 
 Main Components:
-- MarketDataEngine: Main orchestrator
-- SmartAPIDataFetcher: REST API interface
-- WebSocketFeedHandler: WebSocket real-time feeds
-- MarketDataCache: Thread-safe price cache
+- MarketDataEngine: REST API based market data provider
 - PriceData: Price information dataclass
+- Mode: Subscription modes (for compatibility)
 """
 
 from .market_data import (
     MarketDataEngine,
-    MarketDataCache,
-    SmartAPIDataFetcher,
-    WebSocketFeedHandler,
     PriceData,
     Mode,
-    OrderType,
 )
 
 __all__ = [
     'MarketDataEngine',
-    'MarketDataCache',
-    'SmartAPIDataFetcher',
-    'WebSocketFeedHandler',
     'PriceData',
     'Mode',
     'OrderType',

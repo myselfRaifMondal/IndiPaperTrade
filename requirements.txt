@@ -15,6 +15,7 @@ websocket-client
 
 # Dashboard / UI
 streamlit
+PyQt6
 
 # Database ORM and utilities
 sqlalchemy

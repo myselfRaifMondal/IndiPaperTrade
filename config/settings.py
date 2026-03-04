@@ -97,6 +97,11 @@ class Settings:
     SLIPPAGE_PERCENT: float = float(os.getenv('SLIPPAGE_PERCENT', 0.01))  # 0.01%
     ENABLE_SPREAD: bool = os.getenv('ENABLE_SPREAD', 'True').lower() == 'true'
     DEFAULT_SPREAD_PERCENT: float = float(os.getenv('DEFAULT_SPREAD_PERCENT', 0.02))  # 0.02%
+
+    # Market Data Behavior
+    # False = fail when real quote is unavailable (default, strict real prices)
+    # True  = allow simulated fallback for offline testing
+    ALLOW_SIMULATED_PRICES: bool = os.getenv('ALLOW_SIMULATED_PRICES', 'False').lower() == 'true'
     
     @classmethod
     def validate_credentials(cls) -> bool:
@@ -138,22 +143,27 @@ class Settings:
 
 
 # Instrument tokens mapping for common Indian instruments
-# Format: "SYMBOL": {"token": <int>, "exchange": "NSE|NFO|MCX"}
+# Angel One SmartAPI WebSocket V2 format
+# Exchange Types: 1=NSE, 2=NFO, 3=BSE, 4=BFO, 5=MCX, 7=CDS
 INSTRUMENT_TOKENS = {
     # Equity Indices
-    "NIFTY50": {"token": 99926000, "exchange": "NSE", "type": "index"},
-    "SENSEX": {"token": 99919000, "exchange": "BSE", "type": "index"},
+    "NIFTY50": {"token": "99926000", "exchange": "nse_cm", "exchangeType": 1, "type": "index"},
+    "BANKNIFTY": {"token": "99926009", "exchange": "nse_cm", "exchangeType": 1, "type": "index"},
+    "SENSEX": {"token": "99919000", "exchange": "bse_cm", "exchangeType": 3, "type": "index"},
     
-    # Sample Equity Stocks (NSE)
-    "RELIANCE": {"token": 3045, "exchange": "NSE", "type": "equity"},
-    "TCS": {"token": 3456, "exchange": "NSE", "type": "equity"},
-    "INFY": {"token": 1270, "exchange": "NSE", "type": "equity"},
-    "ICICIBANK": {"token": 1213, "exchange": "NSE", "type": "equity"},
-    "HDFC": {"token": 1333, "exchange": "NSE", "type": "equity"},
+    # Sample Equity Stocks (NSE) - Using actual Angel One tokens
+    "RELIANCE": {"token": "2885", "exchange": "nse_cm", "exchangeType": 1, "type": "equity"},
+    "TCS": {"token": "11536", "exchange": "nse_cm", "exchangeType": 1, "type": "equity"},
+    "INFY": {"token": "1594", "exchange": "nse_cm", "exchangeType": 1, "type": "equity"},
+    "ICICIBANK": {"token": "1330", "exchange": "nse_cm", "exchangeType": 1, "type": "equity"},
+    "HDFCBANK": {"token": "1333", "exchange": "nse_cm", "exchangeType": 1, "type": "equity"},
+    "SBIN": {"token": "3045", "exchange": "nse_cm", "exchangeType": 1, "type": "equity"},
+    "WIPRO": {"token": "3787", "exchange": "nse_cm", "exchangeType": 1, "type": "equity"},
+    "ITC": {"token": "1660", "exchange": "nse_cm", "exchangeType": 1, "type": "equity"},
     
-    # Options (NFO)
-    "NIFTY22500CE": {"token": None, "exchange": "NFO", "type": "option"},
-    "NIFTY22500PE": {"token": None, "exchange": "NFO", "type": "option"},
+    # Options (NFO) - Need specific contract tokens
+    "NIFTY22500CE": {"token": None, "exchange": "nse_fo", "exchangeType": 2, "type": "option"},
+    "NIFTY22500PE": {"token": None, "exchange": "nse_fo", "exchangeType": 2, "type": "option"},
 }
 
 

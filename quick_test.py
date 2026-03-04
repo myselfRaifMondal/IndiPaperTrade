@@ -29,30 +29,66 @@ def main():
     # Initialize Market Data Engine
     print("\n1. Initializing Market Data Engine...")
     data_engine = MarketDataEngine()
-    data_engine.initialize()
+    print("   - Created MarketDataEngine instance")
+    initialized = data_engine.initialize()
+    if not initialized:
+        print("   ✗ Initialization failed")
+        print("   ✗ Real market data authentication failed. Aborting test.")
+        sys.exit(1)
+    print("   - Initialized")
     data_engine.start()
+    print("   - Engine started")
     
     # Subscribe to symbols
-    print("2. Subscribing to RELIANCE and TCS...")
-    data_engine.subscribe(["RELIANCE", "TCS"])
+    print("\n2. Subscribing to RELIANCE and TCS...")
+    result = data_engine.subscribe(["RELIANCE", "TCS"])
+    print(f"   Subscription result: {result}")
+    print("   Note: REST real-price mode is enabled (no simulation fallback)")
     
-    # Wait for price data
-    print("3. Waiting for price data (3 seconds)...")
-    time.sleep(3)
+    # Wait for price data (max 10 seconds)
+    print("3. Waiting for price data (max 10 seconds)...")
+    print("   (Checking every 0.5 seconds...)")
+    max_wait = 10
+    start_time = time.time()
+    data_received = False
+    check_count = 0
+    
+    while (time.time() - start_time) < max_wait:
+        check_count += 1
+        if check_count % 4 == 0:  # Print every 2 seconds
+            print(f"   ... still waiting ({int(time.time() - start_time)}s elapsed)")
+        
+        reliance_data = data_engine.get_price_data("RELIANCE")
+        tcs_data = data_engine.get_price_data("TCS")
+        
+        if (reliance_data and reliance_data.ltp) or (tcs_data and tcs_data.ltp):
+            data_received = True
+            break
+        time.sleep(0.5)
+    
+    elapsed = time.time() - start_time
+    print(f"   Waited {elapsed:.1f} seconds - {'Data received' if data_received else 'Timeout, continuing anyway'}")
+    elapsed = time.time() - start_time
+    print(f"   Waited {elapsed:.1f} seconds - {'Data received' if data_received else 'Timeout, continuing anyway'}")
     
     # Check if we have price data
     reliance_data = data_engine.get_price_data("RELIANCE")
     tcs_data = data_engine.get_price_data("TCS")
     
     if reliance_data and reliance_data.ltp:
-        print(f"   ✓ RELIANCE LTP: ₹{reliance_data.ltp:.2f}")
+        print(f"   ✓ RELIANCE LTP: ₹{reliance_data.ltp:.2f} ({data_engine.get_price_source('RELIANCE')})")
     else:
-        print("   ✗ No price data for RELIANCE")
+        print("   ✗ No real price data for RELIANCE")
         
     if tcs_data and tcs_data.ltp:
-        print(f"   ✓ TCS LTP: ₹{tcs_data.ltp:.2f}")
+        print(f"   ✓ TCS LTP: ₹{tcs_data.ltp:.2f} ({data_engine.get_price_source('TCS')})")
     else:
-        print("   ✗ No price data for TCS")
+        print("   ✗ No real price data for TCS")
+
+    if not ((reliance_data and reliance_data.ltp) and (tcs_data and tcs_data.ltp)):
+        print("\n   ✗ Real prices unavailable. Failing test (simulation disabled by design).")
+        data_engine.stop()
+        sys.exit(1)
     
     # Initialize Order Simulator
     print("\n4. Initializing Order Simulator...")
@@ -69,11 +105,12 @@ def main():
     print("\n5. Placing market order: BUY 10 RELIANCE...")
     try:
         order = simulator.place_market_order("RELIANCE", OrderSide.BUY, 10)
-        print(f"   ✓ Order placed successfully")
+        print(f"   ✓ Order placed")
         print(f"   - Order ID: {order.order_id}")
         print(f"   - Status: {order.status.value}")
         print(f"   - Filled quantity: {order.filled_quantity}")
-        print(f"   - Filled price: ₹{order.filled_price:.2f}")
+        if order.filled_price:
+            print(f"   - Filled price: ₹{order.filled_price:.2f}")
     except Exception as e:
         print(f"   ✗ Error: {e}")
     
@@ -93,6 +130,9 @@ def main():
     simulator.start()
     print("   ✓ Background processing started")
     
+    # Let it run for a moment
+    time.sleep(1)
+    
     # Get statistics
     print("\n8. Order statistics:")
     stats = simulator.get_statistics()
@@ -106,10 +146,13 @@ def main():
     # Show execution reports
     print("\n9. Execution reports:")
     executions = simulator.get_executions()
-    for i, report in enumerate(executions, 1):
-        print(f"   {i}. {report.symbol} {report.side.value} "
-              f"{report.quantity} @ ₹{report.price:.2f} "
-              f"(slippage: {report.slippage:.4f}%, spread: {report.spread:.4f}%)")
+    if executions:
+        for i, report in enumerate(executions, 1):
+            print(f"   {i}. {report.symbol} {report.side.value} "
+                  f"{report.quantity} @ ₹{report.price:.2f} "
+                  f"(slippage: {report.slippage:.4f}%, spread: {report.spread:.4f}%)")
+    else:
+        print("   (No executions)")
     
     # Cleanup
     print("\n10. Cleaning up...")
