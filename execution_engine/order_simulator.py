@@ -43,6 +43,7 @@ from execution_engine.order_types import (
     Order, OrderType, OrderSide, OrderStatus,
     TimeInForce, ExecutionReport
 )
+from utils.price_alerts import AlertManager, AlertCondition
 
 logger = logging.getLogger(__name__)
 
@@ -104,6 +105,12 @@ class OrderSimulator:
         
         # Callbacks
         self.execution_callbacks: List[Callable] = []
+        
+        # Alert manager for price alerts
+        self.alert_manager = AlertManager()
+        
+        # Track positions for SL/TP monitoring
+        self.positions: Dict[str, Dict] = {}  # symbol -> {quantity, avg_price, sl, tp}
         
         # Background processing
         self.running = False
@@ -623,8 +630,146 @@ class OrderSimulator:
             except Exception as e:
                 logger.error(f"Error in execution callback: {e}")
     
+    def _check_stop_loss_order(self, order: Order) -> bool:
+        """
+        Check if stop loss order should be triggered.
+        
+        Args:
+            order: Stop loss order to check
+        
+        Returns:
+            bool: True if should trigger, False otherwise
+        """
+        try:
+            if not order.trigger_price:
+                return False
+            
+            # Get current price
+            price_data = self.data_engine.get_price_data(order.symbol)
+            
+            if not price_data or not price_data.ltp:
+                return False
+            
+            ltp = price_data.ltp
+            
+            # Check trigger condition
+            if order.side == OrderSide.SELL:  # Stop loss for long position
+                # Trigger when price drops below stop price
+                return ltp <= order.trigger_price
+            else:  # Stop loss for short position
+                # Trigger when price rises above stop price
+                return ltp >= order.trigger_price
+        
+        except Exception as e:
+            logger.error(f"Error checking stop loss order: {e}")
+            return False
+    
+    def _execute_stop_loss_order(self, order: Order) -> bool:
+        """
+        Execute stop loss order.
+        
+        Args:
+            order: Stop loss order to execute
+        
+        Returns:
+            bool: True if executed, False otherwise
+        """
+        try:
+            logger.info(f"Stop loss triggered for {order.symbol} at {order.trigger_price}")
+            
+            # Get current price
+            price_data = self.data_engine.get_price_data(order.symbol)
+            
+            if not price_data or not price_data.ltp:
+                order.update_status(OrderStatus.REJECTED, "No market data available")
+                return False
+            
+            # Execute as market order at current price
+            execution_price = self._calculate_execution_price(
+                ltp=price_data.ltp,
+                side=order.side,
+                bid=price_data.bid,
+                ask=price_data.ask
+            )
+            
+            # Fill the order
+            order.fill(quantity=order.quantity, price=execution_price)
+            
+            # Create execution report
+            slippage = self._calculate_slippage(price_data.ltp, execution_price, order.side)
+            spread = self._calculate_spread(price_data.bid, price_data.ask) if self.enable_spread else 0.0
+            
+            report = ExecutionReport(
+                order_id=order.order_id,
+                symbol=order.symbol,
+                side=order.side,
+                quantity=order.quantity,
+                price=execution_price,
+                slippage=slippage,
+                spread=spread
+            )
+            
+            with self.lock:
+                self.executions.append(report)
+            
+            # Invoke callbacks
+            self._invoke_execution_callbacks(report)
+            
+            logger.info(
+                f"Stop loss order executed: {order.symbol} {order.side.value} "
+                f"{order.quantity} @ ₹{execution_price:.2f} "
+                f"(trigger: ₹{order.trigger_price:.2f})"
+            )
+            
+            return True
+        
+        except Exception as e:
+            logger.error(f"Stop loss order execution failed: {e}")
+            order.update_status(OrderStatus.REJECTED, str(e))
+            return False
+    
+    def place_stop_loss_order(
+        self,
+        symbol: str,
+        side: OrderSide,
+        quantity: int,
+        trigger_price: float,
+        user_data: Optional[Dict] = None
+    ) -> Order:
+        """
+        Place a stop loss order.
+        
+        Stop loss orders trigger when price crosses trigger level:
+        - SELL stop loss (long protection): Triggers when price drops to trigger
+        - BUY stop loss (short protection): Triggers when price rises to trigger
+        
+        Args:
+            symbol: Trading symbol
+            side: Buy or Sell
+            quantity: Quantity to trade
+            trigger_price: Price to trigger stop loss
+            user_data: Optional user-defined data
+        
+        Returns:
+            Order: Placed order
+        
+        Example:
+            >>> # Protect long position - sell if price drops to 2950
+            >>> order = simulator.place_stop_loss_order("RELIANCE", OrderSide.SELL, 10, 2950.0)
+        """
+        order = Order(
+            symbol=symbol,
+            order_type=OrderType.STOP_LOSS,
+            side=side,
+            quantity=quantity,
+            trigger_price=trigger_price,
+            user_data=user_data or {}
+        )
+        
+        return self.place_order(order)
+    
     def _process_loop(self) -> None:
-        """Background loop for processing limit orders."""
+        """Background loop for processing limit orders, stop loss, and price alerts."""
         logger.info("Order processing loop started")
         
         while self.running:
@@ -639,6 +784,28 @@ class OrderSimulator:
                 for order in active_orders:
                     if self._check_limit_order(order):
                         self._execute_limit_order(order)
+                
+                # Check stop loss orders
+                stop_loss_orders = [
+                    order for order in self.get_active_orders()
+                    if order.is_stop_loss_order()
+                ]
+                
+                for order in stop_loss_orders:
+                    if self._check_stop_loss_order(order):
+                        self._execute_stop_loss_order(order)
+                
+                # Check price alerts
+                with self.lock:
+                    symbols = set(order.symbol for order in self.orders.values() if order.is_active())
+                    
+                    for symbol in symbols:
+                        try:
+                            price_data = self.data_engine.get_price_data(symbol)
+                            if price_data and price_data.ltp:
+                                self.alert_manager.check_alerts(symbol, price_data.ltp)
+                        except Exception as e:
+                            logger.error(f"Error checking alerts for {symbol}: {e}")
                 
                 # Sleep briefly
                 time.sleep(0.5)

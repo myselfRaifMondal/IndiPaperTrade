@@ -18,10 +18,10 @@ from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QTableWidget, QTableWidgetItem, QPushButton, QLabel, QLineEdit,
     QComboBox, QSpinBox, QDoubleSpinBox, QTabWidget, QSplitter,
-    QGroupBox, QMessageBox, QHeaderView, QStatusBar
+    QGroupBox, QMessageBox, QHeaderView, QStatusBar, QScrollArea, QFrame
 )
-from PyQt6.QtCore import QTimer, Qt, pyqtSignal, QThread
-from PyQt6.QtGui import QFont, QColor, QIcon
+from PyQt6.QtCore import QTimer, Qt, pyqtSignal, QThread, QUrl
+from PyQt6.QtGui import QFont, QColor, QIcon, QDesktopServices
 
 # Add parent directory to path for imports
 import os
@@ -34,6 +34,8 @@ from portfolio_engine import PortfolioManager
 from database import Database
 from utils.market_hours import MarketHoursChecker, get_market_status_message
 from utils.rss_feed_manager import RSSFeedManager
+from utils.notifications import NotificationManager, NotificationType
+from utils.price_alerts import AlertCondition
 from ui.styles import (
     MAIN_STYLESHEET, MARKET_CLOCK_STYLESHEET, ORDER_PANEL_STYLESHEET,
     MARKET_WATCH_STYLESHEET, POSITIONS_WIDGET_STYLESHEET,
@@ -208,124 +210,330 @@ class MarketWatchWidget(QWidget):
             self.symbol_selected.emit(symbol_item.text())
 
 
+class NewsItemWidget(QWidget):
+    """Individual news item widget with click-to-open functionality."""
+    
+    def __init__(self, news_item, parent=None):
+        super().__init__(parent)
+        self.news_item = news_item
+        self.init_ui()
+    
+    def init_ui(self):
+        """Initialize the news item UI."""
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(5)
+        
+        # Container for hover effect
+        container = QWidget()
+        container.setStyleSheet(f"""
+            QWidget {{
+                background: {COLORS['bg_darker']};
+                border-left: 3px solid {COLORS['primary']};
+                border-radius: 4px;
+                padding: 8px;
+            }}
+            QWidget:hover {{
+                background: {COLORS['bg_surface']};
+                border-left-color: {COLORS['accent_green']};
+            }}
+        """)
+        container.setCursor(Qt.CursorShape.PointingHandCursor)
+        
+        item_layout = QVBoxLayout(container)
+        item_layout.setContentsMargins(8, 8, 8, 8)
+        item_layout.setSpacing(5)
+        
+        # Header with source and time
+        header_layout = QHBoxLayout()
+        
+        # Source badge
+        source_label = QLabel(self.news_item.source)
+        source_label.setFont(QFont("Arial", 8, QFont.Weight.Bold))
+        source_color = self._get_source_color(self.news_item.source)
+        source_label.setStyleSheet(f"""
+            background: {source_color};
+            color: white;
+            padding: 2px 8px;
+            border-radius: 3px;
+        """)
+        header_layout.addWidget(source_label)
+        
+        # Time
+        time_label = QLabel(self._format_time(self.news_item.published))
+        time_label.setFont(QFont("Arial", 8))
+        time_label.setStyleSheet(f"color: {COLORS['text_tertiary']};")
+        header_layout.addWidget(time_label)
+        header_layout.addStretch()
+        
+        item_layout.addLayout(header_layout)
+        
+        # Title
+        title = QLabel(self.news_item.title)
+        title.setWordWrap(True)
+        title.setFont(QFont("Arial", 10, QFont.Weight.Bold))
+        title.setStyleSheet(f"color: {COLORS['text_primary']};")
+        item_layout.addWidget(title)
+        
+        layout.addWidget(container)
+        
+        # Make clickable
+        container.mousePressEvent = lambda event: self._open_article()
+    
+    def _get_source_color(self, source: str) -> str:
+        """Get color for source badge."""
+        if 'NSE' in source:
+            return '#3B82F6'
+        elif 'BSE' in source:
+            return '#10B981'
+        elif 'RBI' in source:
+            return '#F59E0B'
+        elif 'SEBI' in source:
+            return '#8B5CF6'
+        elif 'MoneyControl' in source:
+            return '#EC4899'
+        elif 'Economic Times' in source:
+            return '#EF4444'
+        elif 'Mint' in source:
+            return '#06B6D4'
+        return COLORS['primary']
+    
+    def _format_time(self, time_str: str) -> str:
+        """Format time to relative format."""
+        try:
+            from email.utils import parsedate_to_datetime
+            from pytz import UTC
+            dt = parsedate_to_datetime(time_str)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=UTC)
+            now = datetime.now(UTC)
+            diff = (now - dt).total_seconds()
+            
+            if diff < 60:
+                return "Just now"
+            elif diff < 3600:
+                return f"{int(diff / 60)}m ago"
+            elif diff < 86400:
+                return f"{int(diff / 3600)}h ago"
+            else:
+                return dt.strftime("%d %b")
+        except:
+            return time_str[:10] if len(time_str) > 10 else time_str
+    
+    def _open_article(self):
+        """Open the article in browser."""
+        from PyQt6.QtGui import QDesktopServices
+        from PyQt6.QtCore import QUrl
+        QDesktopServices.openUrl(QUrl(self.news_item.link))
+
+
 class NewsFeedWidget(QWidget):
-    """RSS News Feed Widget - displays live market news from multiple sources."""
+    """RSS News Feed Widget - displays live market news with scrollable list."""
     
     def __init__(self, rss_manager: RSSFeedManager):
         super().__init__()
         self.rss_manager = rss_manager
-        self.current_index = 0
+        self.news_widgets = []
+        self.current_filter = "All Sources"
         self.init_ui()
         
-        # Update timer for rotating news
+        # Update timer for refreshing news list
         self.timer = QTimer()
         self.timer.timeout.connect(self.update_news_display)
-        self.timer.start(8000)  # Rotate news every 8 seconds
+        self.timer.start(30000)  # Update every 30 seconds
         
-        # Initial display
-        self.update_news_display()
+        # Initial display after short delay
+        QTimer.singleShot(2000, self.update_news_display)
     
     def init_ui(self):
-        group_box = QGroupBox("Market News - Live Feed")
+        """Initialize the news feed UI."""
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(5)
+        
+        # Group box container
+        group_box = QGroupBox("📰 Market News - Live Feed")
+        group_box.setFont(QFont("Arial", 10, QFont.Weight.Bold))
         layout = QVBoxLayout()
+        layout.setSpacing(5)
         
-        # News display area with scrolling
-        self.news_label = QLabel("Loading news feeds...")
-        self.news_label.setFont(QFont("Arial", 10))
-        self.news_label.setStyleSheet(f"""
-            color: {COLORS['text_primary']};
-            padding: 12px;
-            background-color: {COLORS['bg_darker']};
-            border-radius: 4px;
-            border: 1px solid {COLORS['border']};
+        # Control bar with filter and refresh
+        control_layout = QHBoxLayout()
+        
+        # Source filter
+        filter_label = QLabel("Source:")
+        filter_label.setFont(QFont("Arial", 9))
+        filter_label.setStyleSheet(f"color: {COLORS['text_secondary']};")
+        control_layout.addWidget(filter_label)
+        
+        self.source_combo = QComboBox()
+        self.source_combo.setFont(QFont("Arial", 9))
+        self.source_combo.addItems([
+            "All Sources",
+            "SEBI",
+            "Economic Times",
+            "Live Mint",
+            "MoneyControl",
+            "NSE Announcements",
+            "BSE Announcements",
+            "RBI Press Releases"
+        ])
+        self.source_combo.currentTextChanged.connect(self.on_filter_changed)
+        self.source_combo.setMaximumWidth(150)
+        self.source_combo.setStyleSheet(f"""
+            QComboBox {{
+                background: {COLORS['bg_surface']};
+                color: {COLORS['text_primary']};
+                border: 1px solid {COLORS['border']};
+                border-radius: 3px;
+                padding: 3px 8px;
+            }}
+            QComboBox:hover {{
+                border-color: {COLORS['primary']};
+            }}
+            QComboBox::drop-down {{
+                border: none;
+            }}
         """)
-        self.news_label.setWordWrap(True)
-        self.news_label.setMinimumHeight(80)
-        self.news_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        layout.addWidget(self.news_label)
+        control_layout.addWidget(self.source_combo)
         
-        # Status label
-        self.status_label = QLabel("Fetching latest news...")
-        self.status_label.setFont(QFont("Arial", 9))
-        self.status_label.setStyleSheet(f"color: {COLORS['text_tertiary']}; padding: 5px;")
-        layout.addWidget(self.status_label)
+        control_layout.addStretch()
+        
+        # Item count label
+        self.count_label = QLabel("0 items")
+        self.count_label.setFont(QFont("Arial", 9))
+        self.count_label.setStyleSheet(f"color: {COLORS['text_tertiary']};")
+        control_layout.addWidget(self.count_label)
+        
+        # Refresh button
+        refresh_btn = QPushButton("🔄")
+        refresh_btn.setFont(QFont("Arial", 10))
+        refresh_btn.setMaximumWidth(30)
+        refresh_btn.setToolTip("Refresh News")
+        refresh_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: {COLORS['primary']};
+                color: white;
+                border: none;
+                border-radius: 3px;
+                padding: 3px;
+            }}
+            QPushButton:hover {{
+                background: {COLORS['accent_green']};
+            }}
+        """)
+        refresh_btn.clicked.connect(self.refresh_feeds)
+        control_layout.addWidget(refresh_btn)
+        
+        layout.addLayout(control_layout)
+        
+        # Scrollable news area
+        from PyQt6.QtWidgets import QScrollArea
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setMinimumHeight(120)
+        scroll.setMaximumHeight(180)
+        scroll.setStyleSheet(f"""
+            QScrollArea {{
+                background: {COLORS['bg_dark']};
+                border: 1px solid {COLORS['border']};
+                border-radius: 4px;
+            }}
+            QScrollBar:vertical {{
+                background: {COLORS['bg_darker']};
+                width: 10px;
+                border-radius: 5px;
+            }}
+            QScrollBar::handle:vertical {{
+                background: {COLORS['primary']};
+                border-radius: 5px;
+                min-height: 20px;
+            }}
+            QScrollBar::handle:vertical:hover {{
+                background: {COLORS['accent_green']};
+            }}
+        """)
+        
+        # Container for news items
+        self.news_container = QWidget()
+        self.news_layout = QVBoxLayout(self.news_container)
+        self.news_layout.setContentsMargins(0, 0, 0, 0)
+        self.news_layout.setSpacing(5)
+        self.news_layout.addStretch()
+        
+        # Loading label
+        loading = QLabel("Loading news feeds...")
+        loading.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        loading.setStyleSheet(f"color: {COLORS['text_tertiary']}; padding: 20px;")
+        self.news_layout.insertWidget(0, loading)
+        
+        scroll.setWidget(self.news_container)
+        layout.addWidget(scroll)
         
         group_box.setLayout(layout)
-        main_layout = QVBoxLayout()
         main_layout.addWidget(group_box)
-        main_layout.setContentsMargins(0, 0, 0, 0)
-        self.setLayout(main_layout)
     
     def update_news_display(self):
-        """Update news display with rotating items."""
-        items = self.rss_manager.get_latest_items(count=20)
-        
-        if not items:
-            self.news_label.setText("No news available. Feeds will update shortly...")
-            self.status_label.setText("Waiting for updates...")
+        """Update the news display with latest items."""
+        if not self.rss_manager:
             return
         
-        # Show current item with details
-        if self.current_index >= len(items):
-            self.current_index = 0
+        try:
+            # Get all items
+            all_items = self.rss_manager.get_latest_items(count=50)
+            
+            # Filter by source if needed
+            if self.current_filter != "All Sources":
+                items = [item for item in all_items if item.source == self.current_filter]
+            else:
+                items = all_items
+            
+            # Clear existing widgets
+            self.clear_news_widgets()
+            
+            # Create new widgets
+            if not items:
+                no_news = QLabel("No news available")
+                no_news.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                no_news.setStyleSheet(f"color: {COLORS['text_tertiary']}; padding: 20px;")
+                self.news_layout.insertWidget(0, no_news)
+            else:
+                for item in items[:15]:  # Show max 15 items
+                    news_widget = NewsItemWidget(item)
+                    self.news_widgets.append(news_widget)
+                    self.news_layout.insertWidget(len(self.news_widgets) - 1, news_widget)
+            
+            # Update count
+            self.count_label.setText(f"{len(items)} items")
+            
+        except Exception as e:
+            logger.error(f"Error updating news display: {e}")
+    
+    def clear_news_widgets(self):
+        """Clear all news widgets from the layout."""
+        for widget in self.news_widgets:
+            self.news_layout.removeWidget(widget)
+            widget.deleteLater()
+        self.news_widgets.clear()
         
-        current_item = items[self.current_index]
-        
-        # Format news item with color coding for source
-        source_colors = {
-            "NSE": COLORS['primary_light'],
-            "BSE": COLORS['accent_green'],
-            "RBI": COLORS['accent_orange'],
-            "SEBI": COLORS['accent_yellow'],
-            "MoneyControl": COLORS['primary'],
-            "Economic Times": COLORS['text_primary'],
-            "Live Mint": COLORS['text_primary'],
-        }
-        
-        # Get source color
-        source_color = COLORS['primary_light']
-        for key, color in source_colors.items():
-            if key in current_item.source:
-                source_color = color
-                break
-        
-        # Format display with HTML for rich text
-        news_html = f"""
-        <div style='line-height: 1.6;'>
-            <p style='margin: 0 0 8px 0;'>
-                <span style='color: {source_color}; font-weight: bold; font-size: 11px;'>
-                    [{current_item.source}]
-                </span>
-                <span style='color: {COLORS['text_tertiary']}; font-size: 9px; margin-left: 10px;'>
-                    {current_item.published[:16] if current_item.published else 'Now'}
-                </span>
-            </p>
-            <p style='margin: 0; color: {COLORS['text_primary']}; font-size: 11px; font-weight: bold;'>
-                {current_item.title}
-            </p>
-        </div>
-        """
-        
-        self.news_label.setText(news_html)
-        
-        # Update status
-        status = self.rss_manager.get_feed_status()
-        last_update = status['last_update']
-        if last_update:
-            time_str = last_update.strftime("%H:%M:%S")
-            self.status_label.setText(f"Last updated: {time_str} | Showing {self.current_index + 1}/{len(items)} items")
-        else:
-            self.status_label.setText(f"Showing {self.current_index + 1}/{len(items)} items")
-        
-        # Move to next item
-        self.current_index += 1
+        # Also clear any labels
+        for i in reversed(range(self.news_layout.count() - 1)):
+            item = self.news_layout.itemAt(i)
+            if item.widget():
+                item.widget().deleteLater()
+    
+    def on_filter_changed(self, source: str):
+        """Handle source filter change."""
+        self.current_filter = source
+        self.update_news_display()
     
     def refresh_feeds(self):
         """Manually refresh RSS feeds."""
-        self.status_label.setText("Refreshing feeds...")
-        self.rss_manager.update_feeds()
-        self.current_index = 0
-        self.update_news_display()
+        self.count_label.setText("Refreshing...")
+        if self.rss_manager:
+            self.rss_manager.update_feeds()
+        QTimer.singleShot(2000, self.update_news_display)
 
 
 
@@ -512,6 +720,49 @@ class OrderPanel(QWidget):
         self.price_spin.setMinimumHeight(35)
         layout.addWidget(self.price_spin)
         
+        layout.addSpacing(10)
+        
+        # Stop Loss / Take Profit Section
+        sl_tp_group = QGroupBox("Stop Loss / Take Profit")
+        sl_tp_layout = QVBoxLayout()
+        
+        # Stop Loss
+        sl_row = QHBoxLayout()
+        self.sl_enabled = QCheckBox("Stop Loss")
+        self.sl_enabled.setStyleSheet(f"color: {COLORS['text_primary']};")
+        self.sl_enabled.stateChanged.connect(self.on_sl_enabled_changed)
+        self.sl_price = QDoubleSpinBox()
+        self.sl_price.setMinimum(0.05)
+        self.sl_price.setMaximum(100000.0)
+        self.sl_price.setDecimals(2)
+        self.sl_price.setSingleStep(0.05)
+        self.sl_price.setEnabled(False)
+        self.sl_price.setMinimumHeight(30)
+        self.sl_price.setPrefix("₹")
+        sl_row.addWidget(self.sl_enabled)
+        sl_row.addWidget(self.sl_price)
+        sl_tp_layout.addLayout(sl_row)
+        
+        # Take Profit
+        tp_row = QHBoxLayout()
+        self.tp_enabled = QCheckBox("Take Profit")
+        self.tp_enabled.setStyleSheet(f"color: {COLORS['text_primary']};")
+        self.tp_enabled.stateChanged.connect(self.on_tp_enabled_changed)
+        self.tp_price = QDoubleSpinBox()
+        self.tp_price.setMinimum(0.05)
+        self.tp_price.setMaximum(100000.0)
+        self.tp_price.setDecimals(2)
+        self.tp_price.setSingleStep(0.05)
+        self.tp_price.setEnabled(False)
+        self.tp_price.setMinimumHeight(30)
+        self.tp_price.setPrefix("₹")
+        tp_row.addWidget(self.tp_enabled)
+        tp_row.addWidget(self.tp_price)
+        sl_tp_layout.addLayout(tp_row)
+        
+        sl_tp_group.setLayout(sl_tp_layout)
+        layout.addWidget(sl_tp_group)
+        
         layout.addSpacing(20)
         
         # Buy/Sell buttons - Professional styling
@@ -567,6 +818,20 @@ class OrderPanel(QWidget):
         else:
             self.price_spin.setEnabled(False)
     
+    def on_sl_enabled_changed(self, state):
+        """Handle stop loss checkbox change."""
+        self.sl_price.setEnabled(state == 2)  # 2 = checked
+        if state == 2 and self.current_ltp > 0:
+            # Set default SL to 2% below current price for buy, 2% above for sell
+            self.sl_price.setValue(self.current_ltp * 0.98)
+    
+    def on_tp_enabled_changed(self, state):
+        """Handle take profit checkbox change."""
+        self.tp_price.setEnabled(state == 2)  # 2 = checked
+        if state == 2 and self.current_ltp > 0:
+            # Set default TP to 5% above current price for buy, 5% below for sell
+            self.tp_price.setValue(self.current_ltp * 1.05)
+    
     def place_order(self, side: str):
         """Place an order."""
         # Check market hours
@@ -590,33 +855,9 @@ class OrderPanel(QWidget):
             "side": side,
             "quantity": self.quantity_spin.value(),
             "order_type": self.order_type_combo.currentText(),
-            "price": self.price_spin.value() if self.order_type_combo.currentText() == "LIMIT" else None
-        }
-        
-        self.order_placed.emit(order_details)
-        """Place an order."""
-        # Check market hours
-        if not MarketHoursChecker.is_market_open():
-            status = MarketHoursChecker.get_market_status()
-            QMessageBox.warning(
-                self, 
-                "Trading Not Allowed", 
-                f"Trading is only allowed during market hours (9:15 AM - 3:30 PM IST).\n\n"
-                f"Current Status: {status}\n"
-                f"{get_market_status_message()}"
-            )
-            return
-        
-        if not self.current_symbol:
-            QMessageBox.warning(self, "No Symbol", "Please select a symbol from market watch")
-            return
-        
-        order_details = {
-            "symbol": self.current_symbol,
-            "side": side,
-            "quantity": self.quantity_spin.value(),
-            "order_type": self.order_type_combo.currentText(),
-            "price": self.price_spin.value() if self.order_type_combo.currentText() == "LIMIT" else None
+            "price": self.price_spin.value() if self.order_type_combo.currentText() == "LIMIT" else None,
+            "stop_loss": self.sl_price.value() if self.sl_enabled.isChecked() else None,
+            "take_profit": self.tp_price.value() if self.tp_enabled.isChecked() else None
         }
         
         self.order_placed.emit(order_details)
@@ -841,6 +1082,186 @@ class OrderBookWidget(QWidget):
         self.table.scrollToBottom()
 
 
+class AlertsWidget(QWidget):
+    """Price alerts management widget."""
+    
+    alert_added = pyqtSignal(dict)  # Emit alert details
+    alert_removed = pyqtSignal(str)  # Emit alert ID
+    
+    def __init__(self):
+        super().__init__()
+        self.alerts = []
+        self.init_ui()
+    
+    def init_ui(self):
+        layout = QVBoxLayout()
+        
+        # Alert creation section
+        create_group = QGroupBox("Create Price Alert")
+        create_layout = QVBoxLayout()
+        
+        # Symbol input
+        symbol_row = QHBoxLayout()
+        symbol_label = QLabel("Symbol:")
+        symbol_label.setStyleSheet(f"color: {COLORS['text_secondary']};")
+        self.symbol_input = QLineEdit()
+        self.symbol_input.setPlaceholderText("e.g., RELIANCE, TCS")
+        self.symbol_input.setMinimumHeight(30)
+        symbol_row.addWidget(symbol_label)
+        symbol_row.addWidget(self.symbol_input)
+        create_layout.addLayout(symbol_row)
+        
+        # Condition selector
+        condition_row = QHBoxLayout()
+        condition_label = QLabel("Condition:")
+        condition_label.setStyleSheet(f"color: {COLORS['text_secondary']};")
+        self.condition_combo = QComboBox()
+        self.condition_combo.addItems(["Above", "Below", "Crosses"])
+        self.condition_combo.setMinimumHeight(30)
+        condition_row.addWidget(condition_label)
+        condition_row.addWidget(self.condition_combo)
+        create_layout.addLayout(condition_row)
+        
+        # Target price
+        price_row = QHBoxLayout()
+        price_label = QLabel("Target Price:")
+        price_label.setStyleSheet(f"color: {COLORS['text_secondary']};")
+        self.target_price = QDoubleSpinBox()
+        self.target_price.setRange(0.05, 100000.0)
+        self.target_price.setDecimals(2)
+        self.target_price.setPrefix("₹")
+        self.target_price.setMinimumHeight(30)
+        price_row.addWidget(price_label)
+        price_row.addWidget(self.target_price)
+        create_layout.addLayout(price_row)
+        
+        # Add button
+        self.add_btn = QPushButton("Add Alert")
+        self.add_btn.setMinimumHeight(35)
+        self.add_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {COLORS['primary']};
+                color: {COLORS['text_primary']};
+                border: none;
+                border-radius: 4px;
+                font-weight: bold;
+            }}
+            QPushButton:hover {{
+                background-color: {COLORS['primary_light']};
+            }}
+        """)
+        self.add_btn.clicked.connect(self.add_alert)
+        create_layout.addWidget(self.add_btn)
+        
+        create_group.setLayout(create_layout)
+        layout.addWidget(create_group)
+        
+        # Alerts table
+        table_group = QGroupBox("Active Alerts")
+        table_layout = QVBoxLayout()
+        
+        self.alerts_table = QTableWidget()
+        self.alerts_table.setColumnCount(5)
+        self.alerts_table.setHorizontalHeaderLabels(["Symbol", "Condition", "Target", "Status", "Actions"])
+        self.alerts_table.horizontalHeader().setStretchLastSection(False)
+        self.alerts_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        self.alerts_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        self.alerts_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        self.alerts_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        self.alerts_table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        self.alerts_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.alerts_table.setAlternatingRowColors(True)
+        self.alerts_table.verticalHeader().setVisible(False)
+        self.alerts_table.setStyleSheet(f"""
+            QTableWidget {{
+                background-color: {COLORS['bg_darker']};
+                color: {COLORS['text_primary']};
+                gridline-color: {COLORS['border']};
+                border: 1px solid {COLORS['border']};
+            }}
+            QTableWidget::item {{
+                padding: 8px;
+            }}
+            QHeaderView::section {{
+                background-color: {COLORS['bg_medium']};
+                color: {COLORS['text_secondary']};
+                padding: 8px;
+                border: none;
+                font-weight: bold;
+            }}
+        """)
+        
+        table_layout.addWidget(self.alerts_table)
+        table_group.setLayout(table_layout)
+        layout.addWidget(table_group)
+        
+        self.setLayout(layout)
+    
+    def add_alert(self):
+        """Add a new price alert."""
+        symbol = self.symbol_input.text().strip().upper()
+        condition = self.condition_combo.currentText()
+        target = self.target_price.value()
+        
+        if not symbol:
+            QMessageBox.warning(self, "Invalid Symbol", "Please enter a valid symbol")
+            return
+        
+        alert_data = {
+            "symbol": symbol,
+            "condition": condition,
+            "target_price": target,
+            "status": "Active"
+        }
+        
+        # Add to table
+        row = self.alerts_table.rowCount()
+        self.alerts_table.insertRow(row)
+        self.alerts_table.setItem(row, 0, QTableWidgetItem(symbol))
+        self.alerts_table.setItem(row, 1, QTableWidgetItem(condition))
+        self.alerts_table.setItem(row, 2, QTableWidgetItem(f"₹{target:.2f}"))
+        self.alerts_table.setItem(row, 3, QTableWidgetItem("Active"))
+        
+        # Remove button
+        remove_btn = QPushButton("Remove")
+        remove_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {COLORS['danger']};
+                color: white;
+                border: none;
+                padding: 5px 10px;
+                border-radius: 3px;
+            }}
+            QPushButton:hover {{
+                background-color: #d32f2f;
+            }}
+        """)
+        remove_btn.clicked.connect(lambda: self.remove_alert(row))
+        self.alerts_table.setCellWidget(row, 4, remove_btn)
+        
+        self.alerts.append(alert_data)
+        self.alert_added.emit(alert_data)
+        
+        # Clear inputs
+        self.symbol_input.clear()
+        self.target_price.setValue(0.0)
+    
+    def remove_alert(self, row: int):
+        """Remove an alert."""
+        if 0 <= row < len(self.alerts):
+            alert = self.alerts[row]
+            self.alerts_table.removeRow(row)
+            self.alerts.pop(row)
+            # In real implementation, emit alert ID to remove from manager
+            # self.alert_removed.emit(alert_id)
+    
+    def update_alert_status(self, symbol: str, status: str):
+        """Update alert status in table."""
+        for row in range(self.alerts_table.rowCount()):
+            if self.alerts_table.item(row, 0).text() == symbol:
+                self.alerts_table.item(row, 3).setText(status)
+
+
 class TradingTerminal(QMainWindow):
     """Main trading terminal window with professional dark mode styling."""
     
@@ -855,6 +1276,9 @@ class TradingTerminal(QMainWindow):
         
         # Initialize RSS feed manager
         self.rss_manager = RSSFeedManager(max_items=50)
+        
+        # Initialize notification manager
+        self.notification_manager = NotificationManager()
         
         # Initialize engines
         self.market_data_engine = None
@@ -903,10 +1327,15 @@ class TradingTerminal(QMainWindow):
         self.margin_info_widget = MarginInfoWidget()
         self.positions_widget = PositionsWidget()
         self.order_book_widget = OrderBookWidget()
+        self.alerts_widget = AlertsWidget()
         
         right_panel.addTab(self.margin_info_widget, "Margin")
         right_panel.addTab(self.positions_widget, "Positions")
         right_panel.addTab(self.order_book_widget, "Order Book")
+        right_panel.addTab(self.alerts_widget, "Alerts")
+        
+        # Connect alert signals
+        self.alerts_widget.alert_added.connect(self.on_alert_added)
         
         # Create splitter for resizable panels
         splitter = QSplitter(Qt.Orientation.Horizontal)
@@ -970,6 +1399,10 @@ class TradingTerminal(QMainWindow):
             # Order simulator
             self.order_simulator = OrderSimulator(data_engine=self.market_data_engine)
             self.order_simulator.start()
+            
+            # Add alert callback to order simulator
+            self.order_simulator.alert_manager.add_callback(self.on_alert_triggered)
+            self.order_simulator.add_execution_callback(self.on_order_executed)
             
             # Portfolio manager
             self.portfolio_manager = PortfolioManager(
@@ -1057,8 +1490,10 @@ class TradingTerminal(QMainWindow):
             quantity = order_details["quantity"]
             order_type = order_details["order_type"]
             price = order_details.get("price")
+            stop_loss = order_details.get("stop_loss")
+            take_profit = order_details.get("take_profit")
             
-            # Place order
+            # Place main order
             if order_type == "MARKET":
                 order = self.order_simulator.place_market_order(symbol, side, quantity)
             else:
@@ -1067,6 +1502,24 @@ class TradingTerminal(QMainWindow):
             # Update portfolio
             if order.is_filled():
                 self.portfolio_manager.execute_order(order)
+                
+                # Place stop loss order if enabled
+                if stop_loss:
+                    sl_side = OrderSide.SELL if side == OrderSide.BUY else OrderSide.BUY
+                    sl_order = self.order_simulator.place_stop_loss_order(
+                        symbol, sl_side, quantity, stop_loss
+                    )
+                    self.order_book_widget.add_order(sl_order)
+                    logger.info(f"Stop loss order placed: {symbol} @ ₹{stop_loss:.2f}")
+                
+                # Place take profit order if enabled (as limit order)
+                if take_profit:
+                    tp_side = OrderSide.SELL if side == OrderSide.BUY else OrderSide.BUY
+                    tp_order = self.order_simulator.place_limit_order(
+                        symbol, tp_side, quantity, take_profit
+                    )
+                    self.order_book_widget.add_order(tp_order)
+                    logger.info(f"Take profit order placed: {symbol} @ ₹{take_profit:.2f}")
             
             # Add to order book
             self.order_book_widget.add_order(order)
@@ -1081,6 +1534,10 @@ class TradingTerminal(QMainWindow):
             # Show confirmation
             display_price = order.filled_price if order.filled_price else price
             status_msg = f"{side.value} {quantity} {symbol} @ ₹{display_price:.2f}"
+            if stop_loss:
+                status_msg += f"\nSL @ ₹{stop_loss:.2f}"
+            if take_profit:
+                status_msg += f"\nTP @ ₹{take_profit:.2f}"
             self.statusBar.showMessage(status_msg, 5000)
             
             QMessageBox.information(self, "Order Placed", 
@@ -1195,6 +1652,91 @@ class TradingTerminal(QMainWindow):
             logger.error(f"Error stopping market data engine: {e}")
         
         event.accept()
+    
+    def on_alert_added(self, alert_data: dict):
+        """Handle new alert addition."""
+        try:
+            symbol = alert_data["symbol"]
+            target_price = alert_data["target_price"]
+            condition_text = alert_data["condition"]
+            
+            # Convert condition text to AlertCondition enum
+            condition_map = {
+                "Above": AlertCondition.ABOVE,
+                "Below": AlertCondition.BELOW,
+                "Crosses": AlertCondition.CROSSES
+            }
+            condition = condition_map.get(condition_text, AlertCondition.ABOVE)
+            
+            # Add alert to order simulator's alert manager
+            self.order_simulator.alert_manager.add_alert(
+                symbol=symbol,
+                target_price=target_price,
+                condition=condition,
+                message=f"{symbol} {condition_text} ₹{target_price:.2f}"
+            )
+            
+            logger.info(f"Alert added: {symbol} {condition_text} ₹{target_price:.2f}")
+            self.statusBar.showMessage(f"Alert added: {symbol} {condition_text} ₹{target_price:.2f}", 3000)
+            
+        except Exception as e:
+            logger.error(f"Error adding alert: {e}")
+            QMessageBox.critical(self, "Alert Error", str(e))
+    
+    def on_alert_triggered(self, alert, current_price: float):
+        """Handle alert trigger."""
+        try:
+            # Update UI
+            self.alerts_widget.update_alert_status(alert.symbol, "Triggered")
+            
+            # Show notification
+            condition_text = alert.condition.value.title()
+            self.notification_manager.show_price_alert(
+                symbol=alert.symbol,
+                condition=condition_text,
+                target_price=alert.target_price,
+                current_price=current_price
+            )
+            
+            logger.info(f"Alert triggered: {alert.symbol} @ ₹{current_price:.2f}")
+            
+        except Exception as e:
+            logger.error(f"Error handling alert trigger: {e}")
+    
+    def on_order_executed(self, execution_report):
+        """Handle order execution callback."""
+        try:
+            order = self.order_simulator.get_order(execution_report.order_id)
+            
+            if not order:
+                return
+            
+            # Check if this is a stop loss or take profit order
+            is_sl = order.is_stop_loss_order()
+            is_tp = order.order_type == OrderType.LIMIT and "tp" in str(order.user_data).lower()
+            
+            if is_sl:
+                self.notification_manager.show_stop_loss_alert(
+                    symbol=order.symbol,
+                    price=execution_report.price,
+                    quantity=order.quantity
+                )
+            elif is_tp:
+                self.notification_manager.show_take_profit_alert(
+                    symbol=order.symbol,
+                    price=execution_report.price,
+                    quantity=order.quantity
+                )
+            else:
+                self.notification_manager.show_order_filled(
+                    symbol=order.symbol,
+                    side=order.side.value,
+                    quantity=order.quantity,
+                    price=execution_report.price
+                )
+            
+        except Exception as e:
+            logger.error(f"Error handling order execution: {e}")
 
 
 def main():

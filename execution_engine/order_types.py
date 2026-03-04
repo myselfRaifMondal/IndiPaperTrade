@@ -104,6 +104,7 @@ class Order:
     
     # Optional fields with defaults
     price: Optional[float] = None  # Required for LIMIT orders
+    trigger_price: Optional[float] = None  # Trigger price for SL/TP orders
     order_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     status: OrderStatus = OrderStatus.PENDING
     created_at: datetime = field(default_factory=datetime.now)
@@ -125,8 +126,14 @@ class Order:
         if self.order_type == OrderType.LIMIT and self.price is None:
             raise ValueError("LIMIT orders require a price")
         
+        if self.order_type in [OrderType.STOP_LOSS, OrderType.STOP_LOSS_LIMIT] and self.trigger_price is None:
+            raise ValueError("Stop loss orders require a trigger price")
+        
         if self.price is not None and self.price <= 0:
             raise ValueError("Price must be positive")
+        
+        if self.trigger_price is not None and self.trigger_price <= 0:
+            raise ValueError("Trigger price must be positive")
     
     def is_buy(self) -> bool:
         """Check if this is a buy order."""
@@ -143,6 +150,10 @@ class Order:
     def is_limit_order(self) -> bool:
         """Check if this is a limit order."""
         return self.order_type == OrderType.LIMIT
+    
+    def is_stop_loss_order(self) -> bool:
+        """Check if this is a stop loss order."""
+        return self.order_type in [OrderType.STOP_LOSS, OrderType.STOP_LOSS_LIMIT]
     
     def is_pending(self) -> bool:
         """Check if order is pending execution."""
