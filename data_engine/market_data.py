@@ -22,8 +22,8 @@ from enum import Enum
 import queue
 
 try:
-    from smartapi import SmartConnect
-    from smartapi import SmartWebSocketV2
+    from SmartApi import SmartConnect
+    from SmartApi.smartWebSocketV2 import SmartWebSocketV2
 except ImportError:
     raise ImportError(
         "smartapi-python library not found. "
