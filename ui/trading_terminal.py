@@ -9,6 +9,7 @@ Professional trading terminal interface with:
 """
 
 import sys
+import time
 import logging
 from typing import Optional, Dict, List
 from datetime import datetime
@@ -29,6 +30,7 @@ from data_engine import MarketDataEngine, PriceData
 from data_engine.websocket_data import WebSocketDataEngine
 from execution_engine import OrderSimulator, OrderSide, OrderType
 from portfolio_engine import PortfolioManager
+from database import Database
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -83,6 +85,7 @@ class MarketWatchWidget(QWidget):
     """Market watch panel with live price updates."""
     
     symbol_selected = pyqtSignal(str)  # Emit when symbol is selected
+    symbol_added = pyqtSignal(str)  # Emit when new symbol is added
     
     def __init__(self):
         super().__init__()
@@ -140,6 +143,9 @@ class MarketWatchWidget(QWidget):
             item = QTableWidgetItem("-")
             item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             self.table.setItem(row, col, item)
+        
+        # Emit signal for new symbol
+        self.symbol_added.emit(symbol)
     
     def update_price(self, symbol: str, ltp: float, change: float, change_pct: float):
         """Update price for a symbol."""
@@ -340,6 +346,99 @@ class OrderPanel(QWidget):
         self.order_placed.emit(order_details)
 
 
+class MarginInfoWidget(QWidget):
+    """Margin and leverage information display."""
+    
+    def __init__(self):
+        super().__init__()
+        self.init_ui()
+        
+    def init_ui(self):
+        layout = QVBoxLayout()
+        
+        # Title
+        title = QLabel("MARGIN & LEVERAGE INFO")
+        title.setFont(QFont("Arial", 11, QFont.Weight.Bold))
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(title)
+        
+        # Info box
+        info_layout = QVBoxLayout()
+        info_layout.setSpacing(8)
+        
+        # Available Margin
+        margin_layout = QHBoxLayout()
+        margin_label = QLabel("Available Margin:")
+        margin_label.setFont(QFont("Arial", 10))
+        self.margin_value = QLabel("₹100,000.00")
+        self.margin_value.setFont(QFont("Arial", 10, QFont.Weight.Bold))
+        self.margin_value.setStyleSheet("color: #00AA00;")
+        margin_layout.addWidget(margin_label)
+        margin_layout.addStretch()
+        margin_layout.addWidget(self.margin_value)
+        info_layout.addLayout(margin_layout)
+        
+        # Used Margin
+        used_layout = QHBoxLayout()
+        used_label = QLabel("Used Margin:")
+        used_label.setFont(QFont("Arial", 10))
+        self.used_value = QLabel("₹0.00")
+        self.used_value.setFont(QFont("Arial", 10, QFont.Weight.Bold))
+        self.used_value.setStyleSheet("color: #FF6600;")
+        used_layout.addWidget(used_label)
+        used_layout.addStretch()
+        used_layout.addWidget(self.used_value)
+        info_layout.addLayout(used_layout)
+        
+        # Margin Utilization
+        util_layout = QHBoxLayout()
+        util_label = QLabel("Margin Utilization:")
+        util_label.setFont(QFont("Arial", 10))
+        self.util_value = QLabel("0%")
+        self.util_value.setFont(QFont("Arial", 10, QFont.Weight.Bold))
+        self.util_value.setStyleSheet("color: #0066FF;")
+        util_layout.addWidget(util_label)
+        util_layout.addStretch()
+        util_layout.addWidget(self.util_value)
+        info_layout.addLayout(util_layout)
+        
+        # Default Leverage
+        leverage_layout = QHBoxLayout()
+        leverage_label = QLabel("Default Leverage:")
+        leverage_label.setFont(QFont("Arial", 10))
+        self.leverage_value = QLabel("5.0x")
+        self.leverage_value.setFont(QFont("Arial", 10, QFont.Weight.Bold))
+        self.leverage_value.setStyleSheet("color: #AA00AA;")
+        leverage_layout.addWidget(leverage_label)
+        leverage_layout.addStretch()
+        leverage_layout.addWidget(self.leverage_value)
+        info_layout.addLayout(leverage_layout)
+        
+        layout.addLayout(info_layout)
+        layout.addStretch()
+        self.setLayout(layout)
+    
+    def update_margin_info(self, available: float, used: float, leverage: float = 5.0):
+        """Update margin information."""
+        self.margin_value.setText(f"₹{available:,.2f}")
+        self.used_value.setText(f"₹{used:,.2f}")
+        
+        total = available + used
+        utilization = (used / total * 100) if total > 0 else 0
+        self.util_value.setText(f"{utilization:.2f}%")
+        
+        self.leverage_value.setText(f"{leverage:.1f}x")
+        
+        # Color code utilization
+        if utilization < 30:
+            color = "#00AA00"  # Green
+        elif utilization < 70:
+            color = "#FF6600"  # Orange
+        else:
+            color = "#FF0000"  # Red
+        self.util_value.setStyleSheet(f"color: {color};")
+
+
 class PositionsWidget(QWidget):
     """Portfolio positions display."""
     
@@ -358,9 +457,9 @@ class PositionsWidget(QWidget):
         
         # Table
         self.table = QTableWidget()
-        self.table.setColumnCount(7)
+        self.table.setColumnCount(10)
         self.table.setHorizontalHeaderLabels([
-            "Symbol", "Type", "Qty", "Avg Price", "LTP", "P&L", "P&L %"
+            "Symbol", "Type", "Qty", "Avg Price", "LTP", "Leverage", "Margin Used", "P&L", "P&L %", "Status"
         ])
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         
@@ -381,6 +480,15 @@ class PositionsWidget(QWidget):
             self.table.setItem(row, 3, QTableWidgetItem(f"₹{position.entry_price:.2f}"))
             self.table.setItem(row, 4, QTableWidgetItem(f"₹{position.current_price:.2f}"))
             
+            # Leverage
+            leverage = getattr(position, 'leverage', 5.0)
+            self.table.setItem(row, 5, QTableWidgetItem(f"{leverage:.1f}x"))
+            
+            # Margin used = position value / leverage
+            position_value = position.quantity * position.entry_price
+            margin_used = position_value / leverage
+            self.table.setItem(row, 6, QTableWidgetItem(f"₹{margin_used:.2f}"))
+            
             pnl_item = QTableWidgetItem(f"₹{position.unrealized_pnl:.2f}")
             pnl_pct_item = QTableWidgetItem(f"{position.pnl_percentage:.2f}%")
             
@@ -388,8 +496,14 @@ class PositionsWidget(QWidget):
             pnl_item.setForeground(color)
             pnl_pct_item.setForeground(color)
             
-            self.table.setItem(row, 5, pnl_item)
-            self.table.setItem(row, 6, pnl_pct_item)
+            self.table.setItem(row, 7, pnl_item)
+            self.table.setItem(row, 8, pnl_pct_item)
+            
+            # Status
+            status_item = QTableWidgetItem("OPEN")
+            status_item.setForeground(QColor(0, 120, 200))
+            self.table.setItem(row, 9, status_item)
+
 
 
 class OrderBookWidget(QWidget):
@@ -460,6 +574,8 @@ class TradingTerminal(QMainWindow):
         self.order_simulator = None
         self.portfolio_manager = None
         self.price_handler = None
+        self.db = None
+        self.subscribed_symbols = set()
         
         self.init_ui()
         self.init_engines()
@@ -474,6 +590,7 @@ class TradingTerminal(QMainWindow):
         # Left panel - Market Watch
         self.market_watch = MarketWatchWidget()
         self.market_watch.symbol_selected.connect(self.on_symbol_selected)
+        self.market_watch.symbol_added.connect(self.on_symbol_added)
         
         # Middle panel - Order Entry
         self.order_panel = OrderPanel()
@@ -481,9 +598,11 @@ class TradingTerminal(QMainWindow):
         
         # Right panel - Positions and Orders
         right_panel = QTabWidget()
+        self.margin_info_widget = MarginInfoWidget()
         self.positions_widget = PositionsWidget()
         self.order_book_widget = OrderBookWidget()
         
+        right_panel.addTab(self.margin_info_widget, "Margin")
         right_panel.addTab(self.positions_widget, "Positions")
         right_panel.addTab(self.order_book_widget, "Order Book")
         
@@ -503,10 +622,18 @@ class TradingTerminal(QMainWindow):
         self.statusBar = QStatusBar()
         self.setStatusBar(self.statusBar)
         self.statusBar.showMessage("Initializing...")
+
+        # Quick actions
+        self.reset_db_btn = QPushButton("Reset DB")
+        self.reset_db_btn.clicked.connect(self.reset_database)
+        self.statusBar.addPermanentWidget(self.reset_db_btn)
         
     def init_engines(self):
         """Initialize trading engines."""
         try:
+            # Database
+            self.db = Database()
+
             # Market data (REST - for order execution)
             self.statusBar.showMessage("Connecting to market data...")
             self.market_data_engine = MarketDataEngine()
@@ -518,6 +645,9 @@ class TradingTerminal(QMainWindow):
                 QMessageBox.warning(self, "Authentication Failed", 
                                   "Failed to authenticate with Angel One API.")
                 return
+            
+            # Wait to avoid rate limiting (Angel One API has rate limits)
+            time.sleep(2)
             
             # WebSocket data engine (for real-time streaming)
             self.statusBar.showMessage("Connecting to WebSocket stream...")
@@ -542,7 +672,8 @@ class TradingTerminal(QMainWindow):
             self.portfolio_manager = PortfolioManager(
                 initial_capital=100000,
                 market_data_engine=self.market_data_engine,
-                order_simulator=self.order_simulator
+                order_simulator=self.order_simulator,
+                margin_multiplier=5.0
             )
             
             # Add default symbols
@@ -550,31 +681,21 @@ class TradingTerminal(QMainWindow):
             for symbol in default_symbols:
                 self.market_watch.add_symbol(symbol)
             
-            # Subscribe to REST (for order execution fallback)
-            self.market_data_engine.subscribe(default_symbols)
-            
             # Price update handler for WebSocket
-        # Try WebSocket first (real-time), fallback to REST
-        price_data = None
-        if self.ws_data_engine:
-            price_data = self.ws_data_engine.get_price_data(symbol)
-        
-        if not price_data and self.market_data_engine:
-            price_data = self.market_data_engine.get_price_data(symbol)
-        
+            self.price_handler = PriceUpdateHandler()
             self.price_handler.price_updated.connect(self.on_price_update)
             
             # Register callback with WebSocket engine
             if self.ws_data_engine:
                 self.ws_data_engine.register_callback(self.price_handler.on_price_update)
-                
-                # Subscribe to WebSocket for real-time updates
-                self.ws_data_engine.subscribe(default_symbols)
             
             # Update timer for positions
             self.update_timer = QTimer()
             self.update_timer.timeout.connect(self.update_positions)
             self.update_timer.start(2000)  # Update every 2 seconds
+
+            # Initial margin info
+            self.update_margin_info()
             
             self.statusBar.showMessage("Ready - Real-time streaming active", 3000)
             
@@ -584,7 +705,14 @@ class TradingTerminal(QMainWindow):
     
     def on_symbol_selected(self, symbol: str):
         """Handle symbol selection from market watch."""
-        price_data = self.market_data_engine.get_price_data(symbol)
+        # Try WebSocket first (real-time), fallback to REST
+        price_data = None
+        if self.ws_data_engine:
+            price_data = self.ws_data_engine.get_price_data(symbol)
+        
+        if not price_data and self.market_data_engine:
+            price_data = self.market_data_engine.get_price_data(symbol)
+        
         ltp = price_data.ltp if price_data else 0.0
         self.order_panel.set_symbol(symbol, ltp)
         self.statusBar.showMessage(f"Selected: {symbol}", 2000)
@@ -596,6 +724,27 @@ class TradingTerminal(QMainWindow):
         # Update order panel if same symbol
         if self.order_panel.current_symbol == symbol:
             self.order_panel.update_ltp(ltp)
+
+    def on_symbol_added(self, symbol: str):
+        """Subscribe newly added symbols to data sources."""
+        if symbol in self.subscribed_symbols:
+            return
+
+        try:
+            if self.market_data_engine:
+                self.market_data_engine.subscribe([symbol])
+
+            ws_ok = False
+            if self.ws_data_engine:
+                ws_ok = self.ws_data_engine.subscribe([symbol])
+
+            self.subscribed_symbols.add(symbol)
+            if ws_ok:
+                self.statusBar.showMessage(f"Subscribed {symbol} to real-time stream", 3000)
+            else:
+                self.statusBar.showMessage(f"Subscribed {symbol} (REST fallback)", 3000)
+        except Exception as e:
+            logger.error(f"Failed subscribing {symbol}: {e}")
     
     def on_order_placed(self, order_details: dict):
         """Handle order placement."""
@@ -618,12 +767,17 @@ class TradingTerminal(QMainWindow):
             
             # Add to order book
             self.order_book_widget.add_order(order)
+
+            # Persist order to database (best effort)
+            self._save_order_to_db(order)
             
             # Update positions
             self.update_positions()
+            self.update_margin_info()
             
             # Show confirmation
-            status_msg = f"{side.value} {quantity} {symbol} @ ₹{order.filled_price:.2f if order.filled_price else price:.2f}"
+            display_price = order.filled_price if order.filled_price else price
+            status_msg = f"{side.value} {quantity} {symbol} @ ₹{display_price:.2f}"
             self.statusBar.showMessage(status_msg, 5000)
             
             QMessageBox.information(self, "Order Placed", 
@@ -635,24 +789,101 @@ class TradingTerminal(QMainWindow):
     
     def update_positions(self):
         """Update positions display."""
-        if self.price_handler:
-            self.price_handler.stop()
-        
-        if self.ws_data_engine:
-            self.ws_data_engine.stopanager.get_all_positions()
+        if self.portfolio_manager:
+            self.portfolio_manager.update_market_prices()
+            positions = self.portfolio_manager.get_all_positions()
             self.positions_widget.update_positions(positions)
+            self.update_margin_info()
+
+    def update_margin_info(self):
+        """Update margin widget with 5x leverage and actual margin used."""
+        if not self.portfolio_manager:
+            return
+
+        summary = self.portfolio_manager.get_summary()
+        leverage = 5.0
+        actual_margin_used = summary['capital'].get('actual_margin_used', 0.0)
+        available_margin = max(self.portfolio_manager.initial_capital - actual_margin_used, 0.0)
+
+        self.margin_info_widget.update_margin_info(
+            available=available_margin,
+            used=actual_margin_used,
+            leverage=leverage
+        )
+
+    def reset_database(self):
+        """Reset database data on demand."""
+        if not self.db:
+            QMessageBox.warning(self, "Database", "Database is not initialized.")
+            return
+
+        reply = QMessageBox.question(
+            self,
+            "Reset Database",
+            "This will clear all saved orders/positions/trades. Continue?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        if self.db.drop_and_recreate():
+            self.statusBar.showMessage("Database reset completed", 4000)
+            QMessageBox.information(self, "Database", "Database reset successful.")
+        else:
+            QMessageBox.critical(self, "Database", "Database reset failed.")
+
+    def _save_order_to_db(self, order):
+        """Save executed order into database (best effort)."""
+        if not self.db:
+            return
+
+        try:
+            from database.models import Order as DbOrder
+
+            db_order = DbOrder(
+                id=order.order_id,
+                symbol=order.symbol,
+                side=order.side.value,
+                quantity=order.quantity,
+                order_type=order.order_type.value,
+                price=order.price,
+                filled_price=order.filled_price,
+                status=order.status.value,
+                commission=getattr(order, 'commission', 0.0),
+                timestamp=order.created_at,
+                filled_at=order.filled_at,
+            )
+            self.db.add_order(db_order)
+        except Exception as e:
+            logger.error(f"Failed saving order to database: {e}")
     
     def closeEvent(self, event):
         """Handle window close."""
-        if self.market_data_thread:
-            self.market_data_thread.stop()
-            self.market_data_thread.wait()
+        try:
+            if self.price_handler:
+                self.price_handler.stop()
+        except Exception as e:
+            logger.error(f"Error stopping price handler: {e}")
         
-        if self.order_simulator:
-            self.order_simulator.stop()
+        try:
+            if self.ws_data_engine:
+                self.ws_data_engine.stop()
+        except Exception as e:
+            logger.error(f"Error stopping WebSocket engine: {e}")
         
-        if self.market_data_engine:
-            self.market_data_engine.stop()
+        try:
+            if self.order_simulator:
+                self.order_simulator.stop()
+        except Exception as e:
+            logger.error(f"Error stopping order simulator: {e}")
+        
+        try:
+            if self.market_data_engine:
+                self.market_data_engine.stop()
+        except Exception as e:
+            logger.error(f"Error stopping market data engine: {e}")
         
         event.accept()
 

@@ -1,13 +1,14 @@
 """
-Database Manager placeholder.
+Database module for IndiPaperTrade.
 
-This module will provide:
-- SQLite database management
-- Schema creation
-- CRUD operations
-- Query utilities
-
-Coming soon...
+Provides SQLAlchemy models and database management.
 """
 
-# Placeholder for Database Manager
+from .models import Base, Order, Position, Trade, OrderStatus, OrderType, OrderSide
+from .database import Database
+
+__all__ = [
+    'Base', 'Order', 'Position', 'Trade',
+    'OrderStatus', 'OrderType', 'OrderSide',
+    'Database'
+]

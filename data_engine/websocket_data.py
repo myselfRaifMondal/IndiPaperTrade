@@ -219,7 +219,7 @@ class WebSocketDataEngine:
         """Handle WebSocket connection open."""
         logger.info("WebSocket connection opened")
     
-    def _on_close(self, wsapp):
+    def _on_close(self, wsapp, *args):
         """Handle WebSocket connection close."""
         logger.info("WebSocket connection closed")
     

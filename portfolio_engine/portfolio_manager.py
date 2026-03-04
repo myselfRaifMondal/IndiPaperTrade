@@ -31,6 +31,7 @@ class Position:
     entry_price: float
     entry_time: datetime
     current_price: float = 0.0
+    leverage: float = 5.0
     last_updated: datetime = field(default_factory=datetime.now)
     
     @property
@@ -198,7 +199,8 @@ class PortfolioManager:
                             quantity=remaining,
                             entry_price=price,
                             entry_time=datetime.now(),
-                            current_price=price
+                            current_price=price,
+                            leverage=self.margin_multiplier
                         )
                 
                 return True
@@ -223,7 +225,8 @@ class PortfolioManager:
                 quantity=quantity,
                 entry_price=price,
                 entry_time=datetime.now(),
-                current_price=price
+                current_price=price,
+                leverage=self.margin_multiplier
             )
         
         return True
@@ -287,6 +290,12 @@ class PortfolioManager:
     def used_capital(self) -> float:
         """Capital tied up in positions."""
         return self.total_entry_value
+
+    @property
+    def actual_margin_used(self) -> float:
+        """Actual margin blocked with leverage applied."""
+        leverage = self.margin_multiplier if self.margin_multiplier > 0 else 1.0
+        return self.total_entry_value / leverage
     
     def get_summary(self) -> Dict:
         """Get comprehensive portfolio summary."""
@@ -297,6 +306,7 @@ class PortfolioManager:
                 'cash': self.cash,
                 'available': self.available_capital,
                 'used': self.used_capital,
+                'actual_margin_used': self.actual_margin_used,
             },
             'positions': {
                 'open_count': len(self.open_positions),
