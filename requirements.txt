@@ -1,0 +1,41 @@
+# IndiPaperTrade Requirements
+
+# Angel One SmartAPI
+smartapi-python>=1.3.7
+
+# Data manipulation and analysis
+pandas>=1.3.0
+numpy>=1.21.0
+
+# WebSocket support
+websocket-client>=10.0
+
+# Dashboard / UI
+streamlit>=1.20.0
+
+# Database ORM and utilities
+sqlalchemy>=1.4.0
+
+# Environment variables
+python-dotenv>=0.19.0
+
+# Timezone support
+pytz>=2021.3
+
+# HTTP requests
+requests>=2.28.0
+
+# JSON handling (optional, standard library but good to be explicit)
+# json is built-in
+
+# Logging (optional, standard library)
+# logging is built-in
+
+# Threading (optional, standard library)
+# threading is built-in
+
+# Development dependencies (optional)
+# pytest>=7.0.0
+# black>=22.0.0
+# pylint>=2.0.0
+# mypy>=0.900
