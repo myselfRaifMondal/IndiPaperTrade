@@ -14,6 +14,7 @@ Fetches and manages RSS feeds from multiple Indian financial sources:
 import feedparser
 import requests
 from datetime import datetime
+from email.utils import parsedate_to_datetime
 from typing import List, Dict, Optional
 import logging
 from threading import Thread, Lock
@@ -32,6 +33,28 @@ class RSSFeedItem:
         self.published = published
         self.summary = summary
         self.timestamp = datetime.now()
+        self.published_dt = self._parse_published_datetime(published)
+
+    def _parse_published_datetime(self, published: str) -> datetime:
+        """Parse RSS published text into datetime, fallback to current time."""
+        if not published:
+            return self.timestamp
+
+        try:
+            dt = parsedate_to_datetime(published)
+            if dt:
+                return dt.replace(tzinfo=None) if dt.tzinfo else dt
+        except Exception:
+            pass
+
+        # Try common datetime format fallback
+        for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S"):
+            try:
+                return datetime.strptime(published[:19], fmt)
+            except Exception:
+                continue
+
+        return self.timestamp
     
     def __repr__(self):
         return f"<RSSFeedItem: {self.source} - {self.title[:50]}...>"
@@ -45,14 +68,9 @@ class RSSFeedManager:
     
     # RSS Feed URLs
     FEEDS = {
-        "NSE Announcements": "https://www.nseindia.com/rss/corporate-announcements.xml",
-        "NSE Circulars": "https://www.nseindia.com/rss/circulars.xml",
-        "BSE Announcements": "https://www.bseindia.com/xml-data/corpfiling/announcements.xml",
-        "RBI Press Releases": "https://www.rbi.org.in/rss/PressReleases.aspx",
-        "SEBI": "https://www.sebi.gov.in/sebirss.xml",
-        "MoneyControl": "https://www.moneycontrol.com/rss/MCtopnews.xml",
-        "Economic Times": "https://economictimes.indiatimes.com/markets/rssfeeds/1977021501.cms",
-        "Live Mint": "https://www.livemint.com/rss/markets",
+        "Investing - General News": "https://www.investing.com/rss/news.rss",
+        "Investing - Markets": "https://www.investing.com/rss/news_25.rss",
+        "Investing - Category 301": "https://www.investing.com/rss/news_301.rss",
     }
     
     def __init__(self, max_items: int = 50):
@@ -149,8 +167,8 @@ class RSSFeedManager:
             items = self.fetch_feed(source, url)
             all_items.extend(items)
         
-        # Sort by timestamp (most recent first)
-        all_items.sort(key=lambda x: x.timestamp, reverse=True)
+        # Sort by published datetime (most recent first)
+        all_items.sort(key=lambda x: x.published_dt, reverse=True)
         
         return all_items[:self.max_items]
     
