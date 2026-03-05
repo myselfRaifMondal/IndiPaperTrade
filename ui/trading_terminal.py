@@ -17,7 +17,7 @@ from datetime import datetime
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QTableWidget, QTableWidgetItem, QPushButton, QLabel, QLineEdit,
-    QComboBox, QSpinBox, QDoubleSpinBox, QTabWidget, QSplitter,
+    QComboBox, QSpinBox, QDoubleSpinBox, QTabWidget, QSplitter, QCheckBox,
     QGroupBox, QMessageBox, QHeaderView, QStatusBar, QScrollArea, QFrame
 )
 from PyQt6.QtCore import QTimer, Qt, pyqtSignal, QThread, QUrl
@@ -1183,7 +1183,7 @@ class AlertsWidget(QWidget):
                 padding: 8px;
             }}
             QHeaderView::section {{
-                background-color: {COLORS['bg_medium']};
+                background-color: {COLORS['bg_surface']};
                 color: {COLORS['text_secondary']};
                 padding: 8px;
                 border: none;
@@ -1226,7 +1226,7 @@ class AlertsWidget(QWidget):
         remove_btn = QPushButton("Remove")
         remove_btn.setStyleSheet(f"""
             QPushButton {{
-                background-color: {COLORS['danger']};
+                background-color: {COLORS['accent_red']};
                 color: white;
                 border: none;
                 padding: 5px 10px;
@@ -1402,7 +1402,7 @@ class TradingTerminal(QMainWindow):
             
             # Add alert callback to order simulator
             self.order_simulator.alert_manager.add_callback(self.on_alert_triggered)
-            self.order_simulator.add_execution_callback(self.on_order_executed)
+            self.order_simulator.register_execution_callback(self.on_order_executed)
             
             # Portfolio manager
             self.portfolio_manager = PortfolioManager(
