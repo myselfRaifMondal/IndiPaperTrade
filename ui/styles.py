@@ -93,8 +93,8 @@ QGroupBox {{
     color: {COLORS['text_primary']};
     border: 1px solid {COLORS['border']};
     border-radius: 6px;
-    margin-top: 10px;
-    padding-top: 10px;
+    margin-top: 6px;
+    padding-top: 8px;
     font-weight: bold;
 }}
 
@@ -142,7 +142,7 @@ QTableWidget {{
 }}
 
 QTableWidget::item {{
-    padding: 6px;
+    padding: 4px;
     border: none;
 }}
 
@@ -154,7 +154,7 @@ QTableWidget::item:selected {{
 QHeaderView::section {{
     background-color: {COLORS['primary']};
     color: {COLORS['text_primary']};
-    padding: 10px;
+    padding: 6px;
     border: 1px solid {COLORS['border']};
     font-weight: bold;
     font-size: 11px;
@@ -335,18 +335,18 @@ MARKET_CLOCK_STYLESHEET = f"""
 QGroupBox {{
     color: {COLORS['text_primary']};
     border: 2px solid {COLORS['primary']};
-    border-radius: 8px;
-    padding-top: 15px;
-    margin-top: 5px;
+    border-radius: 6px;
+    padding-top: 6px;
+    margin-top: 0px;
     background-color: rgba(20, 27, 45, 0.4);
 }}
 
 QGroupBox::title {{
     subcontrol-origin: margin;
     left: 10px;
-    padding: 0 5px;
+    padding: 0 3px;
     color: {COLORS['primary_light']};
-    font-size: 12px;
+    font-size: 9px;
     font-weight: bold;
 }}
 
@@ -355,7 +355,7 @@ QLabel {{
 }}
 
 QLabel#clockLabel {{
-    font-size: 28px;
+    font-size: 14px;
     font-weight: bold;
     color: {COLORS['accent_yellow']};
     font-family: "Courier New", monospace;
@@ -363,14 +363,14 @@ QLabel#clockLabel {{
 }}
 
 QLabel#statusLabel {{
-    font-size: 14px;
+    font-size: 9px;
     font-weight: bold;
-    padding: 8px 12px;
-    border-radius: 4px;
+    padding: 2px 8px;
+    border-radius: 3px;
 }}
 
 QLabel#timeMessageLabel {{
-    font-size: 11px;
+    font-size: 8px;
     color: {COLORS['text_secondary']};
 }}
 
@@ -406,8 +406,8 @@ QGroupBox {{
     color: {COLORS['text_primary']};
     border: 1px solid {COLORS['border']};
     border-radius: 6px;
-    padding-top: 15px;
-    margin-top: 5px;
+    padding-top: 8px;
+    margin-top: 3px;
     background-color: transparent;
 }}
 
@@ -444,7 +444,7 @@ QGroupBox {{
     color: {COLORS['text_primary']};
     border: 1px solid {COLORS['border']};
     border-radius: 6px;
-    padding-top: 15px;
+    padding-top: 8px;
     background-color: transparent;
 }}
 
@@ -465,7 +465,7 @@ QTableWidget {{
 }}
 
 QTableWidget::item {{
-    padding: 6px;
+    padding: 4px;
     border: none;
 }}
 
@@ -476,7 +476,7 @@ QTableWidget::item:selected {{
 QHeaderView::section {{
     background-color: {COLORS['primary']};
     color: white;
-    padding: 8px;
+    padding: 6px;
     border: none;
     font-weight: bold;
     font-size: 10px;
@@ -489,7 +489,7 @@ QGroupBox {{
     color: {COLORS['text_primary']};
     border: 1px solid {COLORS['border']};
     border-radius: 6px;
-    padding-top: 15px;
+    padding-top: 8px;
     background-color: transparent;
 }}
 
@@ -510,14 +510,14 @@ QTableWidget {{
 }}
 
 QTableWidget::item {{
-    padding: 6px;
+    padding: 4px;
     border: none;
 }}
 
 QHeaderView::section {{
     background-color: {COLORS['primary']};
     color: white;
-    padding: 8px;
+    padding: 6px;
     border: none;
     font-weight: bold;
 }}
@@ -529,7 +529,7 @@ QGroupBox {{
     color: {COLORS['text_primary']};
     border: 2px solid {COLORS['primary']};
     border-radius: 6px;
-    padding-top: 15px;
+    padding-top: 8px;
     background-color: transparent;
 }}
 
@@ -569,7 +569,7 @@ QGroupBox {{
     color: {COLORS['text_primary']};
     border: 1px solid {COLORS['border']};
     border-radius: 6px;
-    padding-top: 15px;
+    padding-top: 8px;
     background-color: transparent;
 }}
 
@@ -590,14 +590,14 @@ QTableWidget {{
 }}
 
 QTableWidget::item {{
-    padding: 6px;
+    padding: 4px;
     border: none;
 }}
 
 QHeaderView::section {{
     background-color: {COLORS['primary']};
     color: white;
-    padding: 8px;
+    padding: 6px;
     border: none;
     font-weight: bold;
 }}

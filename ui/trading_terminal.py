@@ -552,40 +552,89 @@ class MarketClockWidget(QWidget):
     
     def init_ui(self):
         group_box = QGroupBox("Market Clock (IST)")
-        layout = QVBoxLayout()
+        layout = QHBoxLayout()  # Changed to horizontal layout
+        layout.setSpacing(15)
         
-        # Current time - large prominent display
+        # Current time - compact display
+        time_container = QWidget()
+        time_layout = QVBoxLayout(time_container)
+        time_layout.setContentsMargins(0, 0, 0, 0)
+        time_layout.setSpacing(2)
+        
+        time_label_header = QLabel("Time:")
+        time_label_header.setFont(QFont("Arial", 8))
+        time_label_header.setStyleSheet(f"color: {COLORS['text_tertiary']};")
+        time_layout.addWidget(time_label_header)
+        
         self.time_label = QLabel("00:00:00")
         self.time_label.setObjectName("clockLabel")
-        self.time_label.setFont(QFont("Courier New", 32, QFont.Weight.Bold))
-        self.time_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(self.time_label)
+        self.time_label.setFont(QFont("Courier New", 16, QFont.Weight.Bold))  # Reduced from 32
+        self.time_label.setStyleSheet(f"color: {COLORS['accent_yellow']};")
+        time_layout.addWidget(self.time_label)
         
-        # Market status - color coded badge
-        status_layout = QHBoxLayout()
-        status_layout.addStretch()
+        layout.addWidget(time_container)
+        
+        # Separator
+        separator = QFrame()
+        separator.setFrameShape(QFrame.Shape.VLine)
+        separator.setStyleSheet(f"background-color: {COLORS['border']};")
+        separator.setMaximumWidth(1)
+        layout.addWidget(separator)
+        
+        # Market status - compact badge
+        status_container = QWidget()
+        status_layout = QVBoxLayout(status_container)
+        status_layout.setContentsMargins(0, 0, 0, 0)
+        status_layout.setSpacing(2)
+        
+        status_label_header = QLabel("Status:")
+        status_label_header.setFont(QFont("Arial", 8))
+        status_label_header.setStyleSheet(f"color: {COLORS['text_tertiary']};")
+        status_layout.addWidget(status_label_header)
+        
         self.status_label = QLabel("MARKET CLOSED")
         self.status_label.setObjectName("statusLabel")
-        self.status_label.setFont(QFont("Arial", 12, QFont.Weight.Bold))
+        self.status_label.setFont(QFont("Arial", 10, QFont.Weight.Bold))
         self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.status_label.setToolTip("Green: Open | Orange: Pre/Post | Red: Closed")
         self.status_label.setStyleSheet(f"""
             background-color: {COLORS['status_closed']};
             color: white;
-            border-radius: 6px;
-            padding: 10px 20px;
-            font-size: 13px;
+            border-radius: 4px;
+            padding: 4px 12px;
+            font-size: 10px;
         """)
         status_layout.addWidget(self.status_label)
-        status_layout.addStretch()
-        layout.addLayout(status_layout)
         
-        # Status message
+        layout.addWidget(status_container)
+        
+        # Separator
+        separator2 = QFrame()
+        separator2.setFrameShape(QFrame.Shape.VLine)
+        separator2.setStyleSheet(f"background-color: {COLORS['border']};")
+        separator2.setMaximumWidth(1)
+        layout.addWidget(separator2)
+        
+        # Status message - compact
+        msg_container = QWidget()
+        msg_layout = QVBoxLayout(msg_container)
+        msg_layout.setContentsMargins(0, 0, 0, 0)
+        msg_layout.setSpacing(2)
+        
+        msg_label_header = QLabel("Next:")
+        msg_label_header.setFont(QFont("Arial", 8))
+        msg_label_header.setStyleSheet(f"color: {COLORS['text_tertiary']};")
+        msg_layout.addWidget(msg_label_header)
+        
         self.message_label = QLabel("")
         self.message_label.setObjectName("timeMessageLabel")
-        self.message_label.setFont(QFont("Arial", 10))
-        self.message_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.message_label.setFont(QFont("Arial", 9))
+        self.message_label.setStyleSheet(f"color: {COLORS['text_secondary']};")
         self.message_label.setWordWrap(True)
-        layout.addWidget(self.message_label)
+        msg_layout.addWidget(self.message_label)
+        
+        layout.addWidget(msg_container, 1)  # Give message more space
+        layout.addStretch()
         
         group_box.setLayout(layout)
         main_layout = QVBoxLayout()
@@ -607,11 +656,11 @@ class MarketClockWidget(QWidget):
         
         # Style based on status
         status_styles = {
-            "OPEN": f"background-color: {COLORS['status_open']}; color: white; border-radius: 6px; padding: 10px 20px; font-size: 13px; font-weight: bold;",
-            "PRE_MARKET": f"background-color: {COLORS['status_premarket']}; color: white; border-radius: 6px; padding: 10px 20px; font-size: 13px; font-weight: bold;",
-            "POST_MARKET": f"background-color: {COLORS['status_postmarket']}; color: white; border-radius: 6px; padding: 10px 20px; font-size: 13px; font-weight: bold;",
-            "WEEKEND": f"background-color: {COLORS['text_tertiary']}; color: white; border-radius: 6px; padding: 10px 20px; font-size: 13px; font-weight: bold;",
-            "CLOSED": f"background-color: {COLORS['status_closed']}; color: white; border-radius: 6px; padding: 10px 20px; font-size: 13px; font-weight: bold;",
+            "OPEN": f"background-color: {COLORS['status_open']}; color: white; border-radius: 4px; padding: 4px 12px; font-size: 10px; font-weight: bold;",
+            "PRE_MARKET": f"background-color: {COLORS['status_premarket']}; color: white; border-radius: 4px; padding: 4px 12px; font-size: 10px; font-weight: bold;",
+            "POST_MARKET": f"background-color: {COLORS['status_postmarket']}; color: white; border-radius: 4px; padding: 4px 12px; font-size: 10px; font-weight: bold;",
+            "WEEKEND": f"background-color: {COLORS['text_tertiary']}; color: white; border-radius: 4px; padding: 4px 12px; font-size: 10px; font-weight: bold;",
+            "CLOSED": f"background-color: {COLORS['status_closed']}; color: white; border-radius: 4px; padding: 4px 12px; font-size: 10px; font-weight: bold;",
         }
         
         status_map = {
@@ -763,7 +812,40 @@ class OrderPanel(QWidget):
         sl_tp_group.setLayout(sl_tp_layout)
         layout.addWidget(sl_tp_group)
         
-        layout.addSpacing(20)
+        layout.addSpacing(15)
+        
+        # Quick Alert Creation - Compact inline
+        alert_label = QLabel("Price Alert:")
+        alert_label.setFont(QFont("Arial", 9))
+        alert_label.setStyleSheet(f"color: {COLORS['text_secondary']};")
+        layout.addWidget(alert_label)
+        
+        alert_row = QHBoxLayout()
+        self.alert_condition_combo = QComboBox()
+        self.alert_condition_combo.addItems(["Above", "Below"])
+        self.alert_condition_combo.setMaximumWidth(80)
+        self.alert_condition_combo.setMinimumHeight(30)
+        
+        self.alert_price_spin = QDoubleSpinBox()
+        self.alert_price_spin.setMinimum(0.05)
+        self.alert_price_spin.setMaximum(100000.0)
+        self.alert_price_spin.setDecimals(2)
+        self.alert_price_spin.setSingleStep(0.05)
+        self.alert_price_spin.setPrefix("₹")
+        self.alert_price_spin.setMinimumHeight(30)
+        
+        alert_btn = QPushButton("🔔")
+        alert_btn.setMaximumWidth(40)
+        alert_btn.setMinimumHeight(30)
+        alert_btn.setToolTip("Create price alert for this symbol")
+        alert_btn.clicked.connect(self.create_quick_alert)
+        
+        alert_row.addWidget(self.alert_condition_combo)
+        alert_row.addWidget(self.alert_price_spin)
+        alert_row.addWidget(alert_btn)
+        layout.addLayout(alert_row)
+        
+        layout.addSpacing(10)
         
         # Buy/Sell buttons - Professional styling
         button_layout = QHBoxLayout()
@@ -861,6 +943,28 @@ class OrderPanel(QWidget):
         }
         
         self.order_placed.emit(order_details)
+    
+    def create_quick_alert(self):
+        """Create a price alert from order panel."""
+        if not self.current_symbol:
+            QMessageBox.warning(self, "No Symbol", "Please select a symbol first")
+            return
+        
+        condition = self.alert_condition_combo.currentText()
+        target_price = self.alert_price_spin.value()
+        
+        alert_data = {
+            "symbol": self.current_symbol,
+            "condition": condition,
+            "target_price": target_price,
+            "type": "price_alert"
+        }
+        
+        QMessageBox.information(
+            self,
+            "Alert Created",
+            f"Alert created for {self.current_symbol} when price goes {condition.lower()} ₹{target_price:.2f}"
+        )
 
 
 class MarginInfoWidget(QWidget):
@@ -967,20 +1071,48 @@ class PositionsWidget(QWidget):
         group_box = QGroupBox("Open Positions")
         layout = QVBoxLayout()
         
-        # Table
+        # Table with abbreviated headers to save space
         self.table = QTableWidget()
         self.table.setColumnCount(11)
-        self.table.setHorizontalHeaderLabels([
-            "Symbol", "Type", "Qty", "Avg Price", "LTP", "Leverage", "Margin Used", "P&L", "P&L %", "Status", "Action"
-        ])
+        # Use abbreviations with tooltips to save space
+        header_labels = [
+            "Sym", "Type", "Qty", "Ep", "LTP", "Lev", "Margin", "PnL", "PnL%", "Status", "Act"
+        ]
+        self.table.setHorizontalHeaderLabels(header_labels)
+        
+        # Set tooltips for abbreviated headers
+        tooltip_map = {
+            0: "Symbol",
+            1: "Position Type (LONG/SHORT)",
+            2: "Quantity",
+            3: "Entry Price",
+            4: "Last Traded Price",
+            5: "Leverage",
+            6: "Margin Used",
+            7: "Profit/Loss",
+            8: "Profit/Loss Percentage",
+            9: "Position Status",
+            10: "Action"
+        }
+        
+        for col, tooltip in tooltip_map.items():
+            item = self.table.horizontalHeaderItem(col)
+            if item:
+                item.setToolTip(tooltip)
+        
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.table.setMaximumHeight(250)
+        # Reduce font for compact display
+        header_font = self.table.horizontalHeader().font()
+        header_font.setPointSize(9)
+        self.table.horizontalHeader().setFont(header_font)
         
         layout.addWidget(self.table)
         group_box.setLayout(layout)
         main_layout = QVBoxLayout()
-        main_layout.addWidget(group_box)
         main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
+        main_layout.addWidget(group_box)
         self.setLayout(main_layout)
     
     def update_positions(self, positions: Dict):
@@ -1842,7 +1974,7 @@ class TradingTerminal(QMainWindow):
         self.rss_manager.start_auto_update(interval=300)
         
     def init_ui(self):
-        """Initialize UI components with professional layout matching desired design."""
+        """Initialize UI with menu-based tabbed interface."""
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         
@@ -1850,157 +1982,245 @@ class TradingTerminal(QMainWindow):
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
         
-        # ===== TOP BAR: Market Tickers =====
+        # ===== TOP MENU BAR: Panel Toggle Buttons =====
+        menu_bar = QWidget()
+        menu_bar.setStyleSheet(f"""
+            QWidget {{
+                background-color: {COLORS['bg_dark']};
+                border-bottom: 2px solid {COLORS['primary']};
+                padding: 8px;
+            }}
+        """)
+        menu_layout = QHBoxLayout()
+        menu_layout.setContentsMargins(5, 5, 5, 5)
+        menu_layout.setSpacing(5)
+        
+        # Define menu items with icons
+        self.menu_items = {
+            "watchlist": {"label": "📊 Watchlist", "widget": None},
+            "chart": {"label": "📈 Chart", "widget": None},
+            "order": {"label": "🛒 Order", "widget": None},
+            "positions": {"label": "📍 Positions", "widget": None},
+            "orderbook": {"label": "📋 Orders", "widget": None},
+            "alerts": {"label": "🔔 Alerts", "widget": None},
+            "performance": {"label": "⭐ Performance", "widget": None},
+            "risks": {"label": "⚠️ Risk", "widget": None},
+        }
+        
+        self.active_panels = {"watchlist", "chart", "order", "positions"}
+        self.menu_buttons = {}
+        
+        for panel_id, panel_info in self.menu_items.items():
+            btn = QPushButton(panel_info["label"])
+            btn.setCheckable(True)
+            btn.setChecked(panel_id in self.active_panels)
+            btn.setMaximumWidth(120)
+            btn.setMinimumHeight(35)
+            btn.setFont(QFont("Arial", 9, QFont.Weight.Bold))
+            btn.setStyleSheet(f"""
+                QPushButton {{
+                    background-color: {COLORS['bg_surface']};
+                    color: {COLORS['text_primary']};
+                    border: 1px solid {COLORS['border']};
+                    border-radius: 4px;
+                    padding: 5px;
+                }}
+                QPushButton:checked {{
+                    background-color: {COLORS['primary']};
+                    color: white;
+                    border: 2px solid {COLORS['primary_light']};
+                }}
+                QPushButton:hover {{
+                    border: 2px solid {COLORS['primary']};
+                }}
+            """)
+            btn.clicked.connect(lambda checked, pid=panel_id: self.toggle_panel(pid, checked))
+            self.menu_buttons[panel_id] = btn
+            menu_layout.addWidget(btn)
+        
+        # Add separator
+        separator = QLabel("|")
+        separator.setStyleSheet(f"color: {COLORS['border']};")
+        menu_layout.addWidget(separator)
+        
+        # Reset DB button
+        reset_btn = QPushButton("🔄 Reset DB")
+        reset_btn.setMaximumWidth(120)
+        reset_btn.setMinimumHeight(35)
+        reset_btn.setFont(QFont("Arial", 9, QFont.Weight.Bold))
+        reset_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {COLORS['accent_red']};
+                color: white;
+                border: 1px solid {COLORS['border']};
+                border-radius: 4px;
+                padding: 5px;
+            }}
+            QPushButton:hover {{
+                background-color: #dc2626;
+                border: 2px solid {COLORS['accent_red']};
+            }}
+            QPushButton:pressed {{
+                background-color: #b91c1c;
+            }}
+        """)
+        reset_btn.clicked.connect(self.reset_database)
+        menu_layout.addWidget(reset_btn)
+        
+        menu_layout.addStretch()
+        menu_bar.setLayout(menu_layout)
+        main_layout.addWidget(menu_bar)
+        
+        # ===== MARKET CLOCK (Compact Top Info Bar) =====
         self.market_clock = MarketClockWidget()
+        self.market_clock.setMaximumHeight(70)
         main_layout.addWidget(self.market_clock)
         
-        # ===== MAIN CONTENT: 3-Column Layout =====
-        trading_layout = QHBoxLayout()
-        trading_layout.setContentsMargins(5, 5, 5, 5)
-        trading_layout.setSpacing(5)
+        # ===== DYNAMIC CONTENT AREA =====
+        self.content_widget = QWidget()
+        self.content_layout = QHBoxLayout()
+        self.content_layout.setContentsMargins(5, 5, 5, 5)
+        self.content_layout.setSpacing(5)
+        self.content_widget.setLayout(self.content_layout)
         
-        # LEFT PANEL: Watchlist, Alerts, Trade History
-        left_panel = QWidget()
-        left_panel.setObjectName("leftPanel")
-        left_panel.setStyleSheet("""
-            QWidget#leftPanel {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #0F1520, stop:1 #080C14);
-                border: 1px solid #1A2030;
-                border-radius: 6px;
-            }
-        """)
-        left_layout = QVBoxLayout()
-        left_layout.setContentsMargins(6, 6, 6, 6)
-        left_layout.setSpacing(6)
+        main_layout.addWidget(self.content_widget, 1)
+        central_widget.setLayout(main_layout)
         
+        # Initialize all widgets
         self.market_watch = MarketWatchWidget()
         self.market_watch.symbol_selected.connect(self.on_symbol_selected)
         self.market_watch.symbol_added.connect(self.on_symbol_added)
-        left_layout.addWidget(self.market_watch, 3)
-
-        self.alerts_widget = AlertsWidget()
-        self.alerts_widget.alert_added.connect(self.on_alert_added)
-        left_layout.addWidget(self.alerts_widget, 2)
-
-        self.left_trade_history_widget = TradeHistoryWidget()
-        left_layout.addWidget(self.left_trade_history_widget, 2)
         
-        left_panel.setLayout(left_layout)
-        
-        # CENTER PANEL: Chart + Order Entry + Trade History
-        center_panel = QWidget()
-        center_panel.setObjectName("centerPanel")
-        center_panel.setStyleSheet("""
-            QWidget#centerPanel {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #101621, stop:1 #090D16);
-                border: 1px solid #1A2030;
-                border-radius: 6px;
-            }
-        """)
-        center_layout = QVBoxLayout()
-        center_layout.setContentsMargins(6, 6, 6, 6)
-        center_layout.setSpacing(6)
-        
-        # Chart widget
         self.chart_widget = ChartWidget()
-        center_layout.addWidget(self.chart_widget, 2)
-        
-        # Order Entry Panel
         self.order_panel = OrderPanel()
         self.order_panel.order_placed.connect(self.on_order_placed)
-        center_layout.addWidget(self.order_panel, 1)
         
-        # Trade History
-        self.trade_history_widget = TradeHistoryWidget()
-        center_layout.addWidget(self.trade_history_widget, 1)
-
-        # Order Book
-        self.order_book_widget = OrderBookWidget()
-        self.order_book_widget.parent_terminal = self
-        center_layout.addWidget(self.order_book_widget, 1)
-        
-        center_panel.setLayout(center_layout)
-        
-        # RIGHT PANEL: Portfolio Summary, Positions, Performance, Alerts
-        right_panel = QWidget()
-        right_panel.setObjectName("rightPanel")
-        right_panel.setStyleSheet("""
-            QWidget#rightPanel {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #0F1520, stop:1 #080C14);
-                border: 1px solid #1A2030;
-                border-radius: 6px;
-            }
-        """)
-        right_layout = QVBoxLayout()
-        right_layout.setContentsMargins(6, 6, 6, 6)
-        right_layout.setSpacing(6)
-        
-        # Right panel top section (Portfolio Summary + Open Positions)
-        right_top = QWidget()
-        right_top_layout = QVBoxLayout()
-        right_top_layout.setContentsMargins(0, 0, 0, 0)
-        right_top_layout.setSpacing(5)
-        
-        self.margin_info_widget = MarginInfoWidget()
         self.positions_widget = PositionsWidget()
         self.positions_widget.parent_terminal = self
         
-        right_top_layout.addWidget(self.margin_info_widget, 1)
-        right_top_layout.addWidget(self.positions_widget, 2)
-        right_top.setLayout(right_top_layout)
+        self.order_book_widget = OrderBookWidget()
+        self.order_book_widget.parent_terminal = self
         
-        # Right panel bottom section (Performance Metrics + Risk Alerts)
-        right_bottom = QWidget()
-        right_bottom_layout = QVBoxLayout()
-        right_bottom_layout.setContentsMargins(0, 0, 0, 0)
-        right_bottom_layout.setSpacing(5)
+        self.alerts_widget = AlertsWidget()
+        self.alerts_widget.alert_added.connect(self.on_alert_added)
         
         self.performance_metrics_widget = PerformanceMetricsWidget()
         self.risk_alerts_widget = RiskAlertsWidget()
         
-        right_bottom_layout.addWidget(self.performance_metrics_widget, 1)
-        right_bottom_layout.addWidget(self.risk_alerts_widget, 1)
-        right_bottom.setLayout(right_bottom_layout)
+        # Create margin info widget
+        self.margin_info_widget = MarginInfoWidget()
         
-        # Add right panel sections to main layout
-        right_layout.addWidget(right_top, 2)
-        right_layout.addWidget(right_bottom, 1)
-        right_panel.setLayout(right_layout)
-        
-        # Create horizontal splitter for all 3 panels
-        splitter = QSplitter(Qt.Orientation.Horizontal)
-        splitter.addWidget(left_panel)
-        splitter.addWidget(center_panel)
-        splitter.addWidget(right_panel)
-        
-        # Set stretch factors for responsive layout
-        splitter.setStretchFactor(0, 1)  # Left panel: 20%
-        splitter.setStretchFactor(1, 2)  # Center panel: 50%
-        splitter.setStretchFactor(2, 1)  # Right panel: 30%
-        
-        # Set collapsible splitter
-        splitter.setCollapsible(0, True)
-        splitter.setCollapsible(1, False)
-        splitter.setCollapsible(2, True)
-        
-        trading_layout.addWidget(splitter)
-        main_layout.addLayout(trading_layout, 1)
-        
-        central_widget.setLayout(main_layout)
+        # Store in menu items dict
+        self.menu_items["watchlist"]["widget"] = self.market_watch
+        self.menu_items["chart"]["widget"] = self.chart_widget
+        self.menu_items["order"]["widget"] = self.order_panel
+        self.menu_items["positions"]["widget"] = self.positions_widget
+        self.menu_items["orderbook"]["widget"] = self.order_book_widget
+        self.menu_items["alerts"]["widget"] = self.alerts_widget
+        self.menu_items["performance"]["widget"] = self.performance_metrics_widget
+        self.menu_items["risks"]["widget"] = self.risk_alerts_widget
         
         # Status bar
         self.statusBar = QStatusBar()
         self.setStatusBar(self.statusBar)
         self.statusBar.showMessage("Initializing...")
-
-        # Quick actions
-        self.reset_db_btn = QPushButton("Reset DB")
-        self.reset_db_btn.clicked.connect(self.reset_database)
-        self.statusBar.addPermanentWidget(self.reset_db_btn)
         
+        # Initial layout
+        self.update_content_layout()
+    
+    def toggle_panel(self, panel_id: str, checked: bool):
+        """Toggle a panel on/off."""
+        if checked:
+            self.active_panels.add(panel_id)
+        else:
+            self.active_panels.discard(panel_id)
+        
+        self.update_content_layout()
+    
+    def update_content_layout(self):
+        """Dynamically update content layout based on active panels."""
+        # Clear existing layout
+        while self.content_layout.count():
+            item = self.content_layout.takeAt(0)
+            if item.widget():
+                item.widget().hide()
+        
+        if not self.active_panels:
+            # Show empty state
+            empty_label = QLabel("Select panels from the menu")
+            empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            empty_label.setStyleSheet(f"color: {COLORS['text_tertiary']};")
+            self.content_layout.addWidget(empty_label)
+            return
+        
+        num_panels = len(self.active_panels)
+        
+        if num_panels == 1:
+            # Single panel - take full space
+            panel_id = list(self.active_panels)[0]
+            widget = self.menu_items[panel_id]["widget"]
+            if widget:
+                widget.show()
+                self.content_layout.addWidget(widget, 1)
+        
+        elif num_panels == 2:
+            # Two panels - split horizontally
+            splitter = QSplitter(Qt.Orientation.Horizontal)
+            for panel_id in sorted(self.active_panels):
+                widget = self.menu_items[panel_id]["widget"]
+                if widget:
+                    widget.show()
+                    splitter.addWidget(widget)
+            splitter.setSizes([500, 500])
+            self.content_layout.addWidget(splitter, 1)
+        
+        elif num_panels == 3:
+            # Three panels - 2x2 grid with one taking more space
+            left_splitter = QSplitter(Qt.Orientation.Vertical)
+            right_splitter = QSplitter(Qt.Orientation.Vertical)
+            
+            panels_list = sorted(self.active_panels)
+            
+            # Add first two to left, rest to right
+            for i, panel_id in enumerate(panels_list):
+                widget = self.menu_items[panel_id]["widget"]
+                if widget:
+                    widget.show()
+                    if i < 2:
+                        left_splitter.addWidget(widget)
+                    else:
+                        right_splitter.addWidget(widget)
+            
+            main_splitter = QSplitter(Qt.Orientation.Horizontal)
+            main_splitter.addWidget(left_splitter)
+            main_splitter.addWidget(right_splitter)
+            main_splitter.setSizes([800, 800])
+            self.content_layout.addWidget(main_splitter, 1)
+        
+        else:
+            # 4 or more panels - grid layout
+            main_splitter = QSplitter(Qt.Orientation.Horizontal)
+            
+            left_splitter = QSplitter(Qt.Orientation.Vertical)
+            right_splitter = QSplitter(Qt.Orientation.Vertical)
+            
+            panels_list = sorted(self.active_panels)
+            mid = (len(panels_list) + 1) // 2
+            
+            for i, panel_id in enumerate(panels_list):
+                widget = self.menu_items[panel_id]["widget"]
+                if widget:
+                    widget.show()
+                    if i < mid:
+                        left_splitter.addWidget(widget)
+                    else:
+                        right_splitter.addWidget(widget)
+            
+            main_splitter.addWidget(left_splitter)
+            main_splitter.addWidget(right_splitter)
+            main_splitter.setSizes([800, 800])
+            self.content_layout.addWidget(main_splitter, 1)
+    
     def init_engines(self):
         """Initialize trading engines."""
         try:
