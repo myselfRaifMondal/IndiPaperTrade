@@ -21,20 +21,20 @@ COLORS = {
     "accent_orange": "#F97316",     # Warning Orange
     "accent_yellow": "#FBBF24",     # Highlight Yellow
     
-    # Background
-    "bg_dark": "#0F172A",           # Very Dark Blue
-    "bg_darker": "#0A0E27",         # Darker Blue
-    "bg_surface": "#1E293B",        # Surface Blue
-    "bg_surface_light": "#334155",  # Lighter Surface
+    # Background - Darker for professional terminal look
+    "bg_dark": "#0A0E1A",           # Very Dark Blue-Black
+    "bg_darker": "#060A14",         # Almost Black
+    "bg_surface": "#141B2D",        # Panel Surface
+    "bg_surface_light": "#1A2333",  # Lighter Panel
     
     # Text
-    "text_primary": "#F1F5F9",      # Off White
-    "text_secondary": "#CBD5E1",    # Light Gray
-    "text_tertiary": "#94A3B8",     # Medium Gray
+    "text_primary": "#E8EDF4",      # Off White
+    "text_secondary": "#9CA3AF",    # Light Gray
+    "text_tertiary": "#6B7280",     # Medium Gray
     
-    # Borders
-    "border": "#475569",            # Dark Border
-    "border_light": "#64748B",      # Light Border
+    # Borders - More subtle
+    "border": "#1F2937",            # Very Dark Border
+    "border_light": "#374151",      # Subtle Border
     
     # Status
     "status_open": "#10B981",       # Green for OPEN
@@ -89,7 +89,7 @@ QStatusBar::item {{
 
 /* Group Box */
 QGroupBox {{
-    background-color: {COLORS['bg_darker']};
+    background-color: transparent;
     color: {COLORS['text_primary']};
     border: 1px solid {COLORS['border']};
     border-radius: 6px;
@@ -134,11 +134,11 @@ QTabBar::tab:hover {{
 
 /* Tables */
 QTableWidget {{
-    background-color: {COLORS['bg_darker']};
+    background-color: rgba(10, 14, 26, 0.5);
     color: {COLORS['text_primary']};
     border: 1px solid {COLORS['border']};
     gridline-color: {COLORS['border']};
-    alternate-background-color: {COLORS['bg_dark']};
+    alternate-background-color: rgba(20, 27, 45, 0.3);
 }}
 
 QTableWidget::item {{
@@ -221,7 +221,7 @@ QPushButton#resetButton:hover {{
 
 /* Line Edit & Input Fields */
 QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox {{
-    background-color: {COLORS['bg_darker']};
+    background-color: rgba(10, 14, 26, 0.8);
     color: {COLORS['text_primary']};
     border: 1px solid {COLORS['border']};
     border-radius: 4px;
@@ -231,7 +231,7 @@ QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox {{
 
 QLineEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus, QComboBox:focus {{
     border: 2px solid {COLORS['primary']};
-    background-color: {COLORS['bg_dark']};
+    background-color: rgba(20, 27, 45, 0.9);
 }}
 
 QComboBox::drop-down {{
@@ -338,7 +338,7 @@ QGroupBox {{
     border-radius: 8px;
     padding-top: 15px;
     margin-top: 5px;
-    background-color: {COLORS['bg_surface']};
+    background-color: rgba(20, 27, 45, 0.4);
 }}
 
 QGroupBox::title {{
@@ -408,7 +408,7 @@ QGroupBox {{
     border-radius: 6px;
     padding-top: 15px;
     margin-top: 5px;
-    background-color: {COLORS['bg_surface']};
+    background-color: transparent;
 }}
 
 QGroupBox::title {{
@@ -426,7 +426,7 @@ QLabel {{
 }}
 
 QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox {{
-    background-color: {COLORS['bg_darker']};
+    background-color: rgba(10, 14, 26, 0.8);
     color: {COLORS['text_primary']};
     border: 1px solid {COLORS['border']};
     border-radius: 4px;
@@ -445,7 +445,7 @@ QGroupBox {{
     border: 1px solid {COLORS['border']};
     border-radius: 6px;
     padding-top: 15px;
-    background-color: {COLORS['bg_surface']};
+    background-color: transparent;
 }}
 
 QGroupBox::title {{
@@ -458,7 +458,7 @@ QGroupBox::title {{
 }}
 
 QTableWidget {{
-    background-color: {COLORS['bg_darker']};
+    background-color: rgba(10, 14, 26, 0.3);
     color: {COLORS['text_primary']};
     border: none;
     gridline-color: {COLORS['border']};
@@ -490,7 +490,7 @@ QGroupBox {{
     border: 1px solid {COLORS['border']};
     border-radius: 6px;
     padding-top: 15px;
-    background-color: {COLORS['bg_surface']};
+    background-color: transparent;
 }}
 
 QGroupBox::title {{
@@ -503,7 +503,7 @@ QGroupBox::title {{
 }}
 
 QTableWidget {{
-    background-color: {COLORS['bg_darker']};
+    background-color: rgba(10, 14, 26, 0.3);
     color: {COLORS['text_primary']};
     border: none;
     gridline-color: {COLORS['border']};
@@ -530,7 +530,7 @@ QGroupBox {{
     border: 2px solid {COLORS['primary']};
     border-radius: 6px;
     padding-top: 15px;
-    background-color: {COLORS['bg_surface']};
+    background-color: transparent;
 }}
 
 QGroupBox::title {{
@@ -570,7 +570,7 @@ QGroupBox {{
     border: 1px solid {COLORS['border']};
     border-radius: 6px;
     padding-top: 15px;
-    background-color: {COLORS['bg_surface']};
+    background-color: transparent;
 }}
 
 QGroupBox::title {{
@@ -583,7 +583,7 @@ QGroupBox::title {{
 }}
 
 QTableWidget {{
-    background-color: {COLORS['bg_darker']};
+    background-color: rgba(10, 14, 26, 0.3);
     color: {COLORS['text_primary']};
     border: none;
     gridline-color: {COLORS['border']};

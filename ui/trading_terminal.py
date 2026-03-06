@@ -649,7 +649,7 @@ class OrderPanel(QWidget):
         self.setStyleSheet(ORDER_PANEL_STYLESHEET)
         
     def init_ui(self):
-        group_box = QGroupBox("Place Order")
+        group_box = QGroupBox("Order Entry")
         layout = QVBoxLayout()
         
         # Symbol display - Large and prominent
@@ -1124,10 +1124,49 @@ class OrderBookWidget(QWidget):
         """Cancel a pending order."""
         if self.parent_terminal:
             self.parent_terminal.cancel_order(order_id)
-        self.table.setItem(row, 6, status_item)
-        
-        # Scroll to latest
-        self.table.scrollToBottom()
+
+    def refresh_orders(self):
+        """Refresh order statuses from simulator."""
+        if not self.parent_terminal or not self.parent_terminal.order_simulator:
+            return
+
+        try:
+            simulator = self.parent_terminal.order_simulator
+            for row in range(self.table.rowCount()):
+                symbol_item = self.table.item(row, 1)
+                side_item = self.table.item(row, 3)
+                qty_item = self.table.item(row, 4)
+                if not symbol_item or not side_item or not qty_item:
+                    continue
+
+                symbol = symbol_item.text()
+                side = side_item.text()
+                qty_text = qty_item.text()
+
+                matching_order = None
+                for order in simulator.orders.values():
+                    if (
+                        order.symbol == symbol
+                        and order.side.value == side
+                        and str(order.quantity) == qty_text
+                    ):
+                        matching_order = order
+
+                if matching_order:
+                    status_item = self.table.item(row, 6)
+                    if not status_item:
+                        status_item = QTableWidgetItem()
+                        self.table.setItem(row, 6, status_item)
+
+                    status_item.setText(matching_order.status.value)
+                    if matching_order.status.value == "FILLED":
+                        status_item.setForeground(QColor(0, 150, 0))
+                        self.table.removeCellWidget(row, 7)
+                    elif matching_order.status.value == "CANCELLED":
+                        status_item.setForeground(QColor(150, 0, 0))
+                        self.table.removeCellWidget(row, 7)
+        except Exception as e:
+            logger.error(f"Error refreshing order book: {e}")
 
 
 class AlertsWidget(QWidget):
@@ -1771,9 +1810,10 @@ class RiskAlertsWidget(QWidget):
 class TradingTerminal(QMainWindow):
     """Main trading terminal window with professional dark mode styling."""
     
-    def __init__(self):
+    def __init__(self, demo_mode: bool = False):
         super().__init__()
-        self.setWindowTitle("IndiPaperTrade - Professional Trading Terminal")
+        self.demo_mode = demo_mode
+        self.setWindowTitle("PAPER TRADING TERMINAL")
         self.setGeometry(50, 50, 1600, 1000)
         self.setMinimumSize(1200, 800)
         
@@ -1821,22 +1861,47 @@ class TradingTerminal(QMainWindow):
         
         # LEFT PANEL: Watchlist, Alerts, Trade History
         left_panel = QWidget()
+        left_panel.setObjectName("leftPanel")
+        left_panel.setStyleSheet("""
+            QWidget#leftPanel {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #0F1520, stop:1 #080C14);
+                border: 1px solid #1A2030;
+                border-radius: 6px;
+            }
+        """)
         left_layout = QVBoxLayout()
-        left_layout.setContentsMargins(0, 0, 0, 0)
-        left_layout.setSpacing(5)
+        left_layout.setContentsMargins(6, 6, 6, 6)
+        left_layout.setSpacing(6)
         
         self.market_watch = MarketWatchWidget()
         self.market_watch.symbol_selected.connect(self.on_symbol_selected)
         self.market_watch.symbol_added.connect(self.on_symbol_added)
-        left_layout.addWidget(self.market_watch)
+        left_layout.addWidget(self.market_watch, 3)
+
+        self.alerts_widget = AlertsWidget()
+        self.alerts_widget.alert_added.connect(self.on_alert_added)
+        left_layout.addWidget(self.alerts_widget, 2)
+
+        self.left_trade_history_widget = TradeHistoryWidget()
+        left_layout.addWidget(self.left_trade_history_widget, 2)
         
         left_panel.setLayout(left_layout)
         
         # CENTER PANEL: Chart + Order Entry + Trade History
         center_panel = QWidget()
+        center_panel.setObjectName("centerPanel")
+        center_panel.setStyleSheet("""
+            QWidget#centerPanel {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #101621, stop:1 #090D16);
+                border: 1px solid #1A2030;
+                border-radius: 6px;
+            }
+        """)
         center_layout = QVBoxLayout()
-        center_layout.setContentsMargins(0, 0, 0, 0)
-        center_layout.setSpacing(5)
+        center_layout.setContentsMargins(6, 6, 6, 6)
+        center_layout.setSpacing(6)
         
         # Chart widget
         self.chart_widget = ChartWidget()
@@ -1850,14 +1915,28 @@ class TradingTerminal(QMainWindow):
         # Trade History
         self.trade_history_widget = TradeHistoryWidget()
         center_layout.addWidget(self.trade_history_widget, 1)
+
+        # Order Book
+        self.order_book_widget = OrderBookWidget()
+        self.order_book_widget.parent_terminal = self
+        center_layout.addWidget(self.order_book_widget, 1)
         
         center_panel.setLayout(center_layout)
         
         # RIGHT PANEL: Portfolio Summary, Positions, Performance, Alerts
         right_panel = QWidget()
+        right_panel.setObjectName("rightPanel")
+        right_panel.setStyleSheet("""
+            QWidget#rightPanel {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #0F1520, stop:1 #080C14);
+                border: 1px solid #1A2030;
+                border-radius: 6px;
+            }
+        """)
         right_layout = QVBoxLayout()
-        right_layout.setContentsMargins(0, 0, 0, 0)
-        right_layout.setSpacing(5)
+        right_layout.setContentsMargins(6, 6, 6, 6)
+        right_layout.setSpacing(6)
         
         # Right panel top section (Portfolio Summary + Open Positions)
         right_top = QWidget()
@@ -1867,6 +1946,7 @@ class TradingTerminal(QMainWindow):
         
         self.margin_info_widget = MarginInfoWidget()
         self.positions_widget = PositionsWidget()
+        self.positions_widget.parent_terminal = self
         
         right_top_layout.addWidget(self.margin_info_widget, 1)
         right_top_layout.addWidget(self.positions_widget, 2)
@@ -2233,8 +2313,8 @@ class TradingTerminal(QMainWindow):
                 filled_price=order.filled_price,
                 status=order.status.value,
                 commission=getattr(order, 'commission', 0.0),
-                timestamp=order.created_at,
-                filled_at=order.filled_at,
+                timestamp=getattr(order, 'created_at', datetime.now()),
+                filled_at=getattr(order, 'filled_at', None),
             )
             self.db.add_order(db_order)
         except Exception as e:
@@ -2308,7 +2388,8 @@ class TradingTerminal(QMainWindow):
         """Handle alert trigger."""
         try:
             # Update UI
-            self.alerts_widget.update_alert_status(alert.symbol, "Triggered")
+            if hasattr(self, 'alerts_widget') and self.alerts_widget:
+                self.alerts_widget.update_alert_status(alert.symbol, "Triggered")
             
             # Show notification
             condition_text = alert.condition.value.title()
@@ -2493,13 +2574,13 @@ class TradingTerminal(QMainWindow):
     def update_trade_history(self):
         """Update trade history widget with closed trades."""
         try:
-            if not self.trade_history_widget or not self.portfolio_manager:
+            if not self.portfolio_manager:
                 return
             
             closed_trades = getattr(self.portfolio_manager, 'closed_trades', [])
             
             # Only add new trades (compare with widget's current count)
-            current_count = self.trade_history_widget.table.rowCount()
+            current_count = self.trade_history_widget.table.rowCount() if hasattr(self, 'trade_history_widget') else 0
             
             for i, trade in enumerate(closed_trades[current_count:]):
                 symbol = trade.get('symbol', 'N/A')
@@ -2508,7 +2589,10 @@ class TradingTerminal(QMainWindow):
                 exit_price = trade.get('exit_price', 0)
                 pnl = trade.get('pnl', 0)
                 
-                self.trade_history_widget.add_trade(symbol, trade_type, entry, exit_price, pnl)
+                if hasattr(self, 'trade_history_widget') and self.trade_history_widget:
+                    self.trade_history_widget.add_trade(symbol, trade_type, entry, exit_price, pnl)
+                if hasattr(self, 'left_trade_history_widget') and self.left_trade_history_widget:
+                    self.left_trade_history_widget.add_trade(symbol, trade_type, entry, exit_price, pnl)
             
             logger.debug(f"Updated trade history: {len(closed_trades)} total trades")
         
