@@ -1311,10 +1311,13 @@ class AlertsWidget(QWidget):
 
 
 class ChartWidget(QWidget):
-    """Candlestick chart widget (placeholder for actual charting library)."""
+    """Candlestick chart widget with matplotlib integration."""
     
     def __init__(self):
         super().__init__()
+        self.current_symbol = None
+        self.current_timeframe = '5m'
+        self.ohlc_provider = None
         self.init_ui()
         self.setStyleSheet("""
             QWidget {
@@ -1325,31 +1328,139 @@ class ChartWidget(QWidget):
         """)
     
     def init_ui(self):
+        """Initialize chart UI with controls and canvas."""
         layout = QVBoxLayout()
+        layout.setContentsMargins(5, 5, 5, 5)
+        layout.setSpacing(5)
         
-        # Chart title
-        title = QLabel("Chart - Select symbol to view")
-        title.setFont(QFont("Arial", 10, QFont.Weight.Bold))
-        title.setStyleSheet("color: #888;")
-        layout.addWidget(title)
+        # Top control bar
+        control_layout = QHBoxLayout()
         
-        # Placeholder chart area (in real implementation, use matplotlib/plotly)
-        chart_area = QFrame()
-        chart_area.setMinimumHeight(300)
-        chart_area.setStyleSheet("""
-            QFrame {
-                background-color: #111;
-                border: 1px dashed #333;
+        # Symbol label
+        symbol_label = QLabel("Symbol:")
+        symbol_label.setFont(QFont("Arial", 9))
+        symbol_label.setStyleSheet("color: #888;")
+        control_layout.addWidget(symbol_label)
+        
+        self.symbol_display = QLabel("--")
+        self.symbol_display.setFont(QFont("Arial", 10, QFont.Weight.Bold))
+        self.symbol_display.setStyleSheet("color: #10b981;")
+        control_layout.addWidget(self.symbol_display)
+        
+        control_layout.addSpacing(20)
+        
+        # Timeframe selector
+        timeframe_label = QLabel("Timeframe:")
+        timeframe_label.setFont(QFont("Arial", 9))
+        timeframe_label.setStyleSheet("color: #888;")
+        control_layout.addWidget(timeframe_label)
+        
+        self.timeframe_combo = QComboBox()
+        self.timeframe_combo.addItems(['1m', '5m', '15m', '1h', '1d'])
+        self.timeframe_combo.setCurrentText('5m')
+        self.timeframe_combo.currentTextChanged.connect(self.on_timeframe_changed)
+        self.timeframe_combo.setStyleSheet("""
+            QComboBox {
+                background-color: #2a2a2a;
+                color: #fff;
+                border: 1px solid #333;
+                padding: 3px;
+                font-size: 9px;
             }
+            QComboBox::drop-down { border: none; }
         """)
-        layout.addWidget(chart_area, 1)
+        control_layout.addWidget(self.timeframe_combo)
+        
+        # Indicator checkboxes
+        control_layout.addSpacing(20)
+        
+        self.sma_checkbox = QCheckBox("SMA20")
+        self.sma_checkbox.setStyleSheet("color: #888; font-size: 9px;")
+        self.sma_checkbox.stateChanged.connect(self.on_indicator_changed)
+        control_layout.addWidget(self.sma_checkbox)
+        
+        self.rsi_checkbox = QCheckBox("RSI14")
+        self.rsi_checkbox.setStyleSheet("color: #888; font-size: 9px;")
+        self.rsi_checkbox.stateChanged.connect(self.on_indicator_changed)
+        control_layout.addWidget(self.rsi_checkbox)
+        
+        self.macd_checkbox = QCheckBox("MACD")
+        self.macd_checkbox.setStyleSheet("color: #888; font-size: 9px;")
+        self.macd_checkbox.stateChanged.connect(self.on_indicator_changed)
+        control_layout.addWidget(self.macd_checkbox)
+        
+        self.bollinger_checkbox = QCheckBox("Bollinger")
+        self.bollinger_checkbox.setStyleSheet("color: #888; font-size: 9px;")
+        self.bollinger_checkbox.stateChanged.connect(self.on_indicator_changed)
+        control_layout.addWidget(self.bollinger_checkbox)
+        
+        control_layout.addStretch()
+        layout.addLayout(control_layout)
+        
+        # Import matplotlib canvas here
+        try:
+            from ui.chart_widget_matplotlib import MatplotlibCanvasWidget
+            self.canvas_widget = MatplotlibCanvasWidget()
+            layout.addWidget(self.canvas_widget, 1)
+        except ImportError as e:
+            logger.warning(f"Could not import matplotlib: {e}")
+            error_label = QLabel("Matplotlib not available - chart disabled")
+            error_label.setStyleSheet("color: #ef4444;")
+            layout.addWidget(error_label)
+            self.canvas_widget = None
         
         self.setLayout(layout)
     
-    def update_chart(self, symbol: str, data: Dict):
-        """Update chart with new data."""
-        # Placeholder for real chart updates
-        pass
+    def set_ohlc_provider(self, provider):
+        """Set the OHLC data provider."""
+        self.ohlc_provider = provider
+    
+    def update_chart(self, symbol: str, timeframe: str = '5m'):
+        """Update chart with new symbol and timeframe."""
+        try:
+            self.current_symbol = symbol
+            self.current_timeframe = timeframe
+            self.symbol_display.setText(symbol)
+            
+            if not self.ohlc_provider or not self.canvas_widget:
+                logger.warning("OHLC provider or canvas not available")
+                return
+            
+            # Get candle data
+            candles = self.ohlc_provider.get_candles(symbol, timeframe, limit=100)
+            
+            if not candles:
+                logger.warning(f"No candle data for {symbol} {timeframe}")
+                return
+            
+            # Prepare indicators dict
+            indicators = {}
+            if self.sma_checkbox.isChecked():
+                indicators['sma20'] = True
+            if self.rsi_checkbox.isChecked():
+                indicators['rsi14'] = True
+            if self.macd_checkbox.isChecked():
+                indicators['macd'] = True
+            if self.bollinger_checkbox.isChecked():
+                indicators['bollinger'] = True
+            
+            # Plot chart
+            self.canvas_widget.plot(candles, indicators)
+            
+            logger.info(f"Updated chart for {symbol} {timeframe}")
+        
+        except Exception as e:
+            logger.error(f"Error updating chart: {e}")
+    
+    def on_timeframe_changed(self, timeframe: str):
+        """Handle timeframe change."""
+        if self.current_symbol:
+            self.update_chart(self.current_symbol, timeframe)
+    
+    def on_indicator_changed(self):
+        """Handle indicator checkbox changes."""
+        if self.current_symbol:
+            self.update_chart(self.current_symbol, self.current_timeframe)
 
 
 class TradeHistoryWidget(QWidget):
@@ -1368,11 +1479,37 @@ class TradeHistoryWidget(QWidget):
         layout = QVBoxLayout()
         layout.setContentsMargins(0, 0, 0, 0)
         
-        # Title
+        # Title with export button
+        title_layout = QHBoxLayout()
+        
         title = QLabel("Trade History")
         title.setFont(QFont("Arial", 10, QFont.Weight.Bold))
         title.setStyleSheet("color: #10b981;")
-        layout.addWidget(title)
+        title_layout.addWidget(title)
+        
+        title_layout.addStretch()
+        
+        # Export button
+        export_btn = QPushButton("📥 Export")
+        export_btn.setFont(QFont("Arial", 8))
+        export_btn.setMaximumWidth(80)
+        export_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #3b82f6;
+                color: white;
+                border: none;
+                padding: 4px 10px;
+                border-radius: 3px;
+                font-size: 8px;
+            }
+            QPushButton:hover {
+                background-color: #2563eb;
+            }
+        """)
+        export_btn.clicked.connect(self.export_trades)
+        title_layout.addWidget(export_btn)
+        
+        layout.addLayout(title_layout)
         
         # Table
         self.table = QTableWidget()
@@ -1400,6 +1537,43 @@ class TradeHistoryWidget(QWidget):
         
         layout.addWidget(self.table)
         self.setLayout(layout)
+    
+    def export_trades(self):
+        """Export trades to CSV."""
+        try:
+            from utils.export_tools import get_export_tools
+            
+            # Get trades from table
+            trades = []
+            for row in range(self.table.rowCount()):
+                trade = {
+                    'time': self.table.item(row, 0).text(),
+                    'symbol': self.table.item(row, 1).text(),
+                    'type': self.table.item(row, 2).text(),
+                    'entry_price': self.table.item(row, 3).text(),
+                    'exit_price': self.table.item(row, 4).text(),
+                    'pnl': self.table.item(row, 5).text(),
+                }
+                trades.append(trade)
+            
+            if not trades:
+                QMessageBox.warning(self, "No Data", "No trades to export")
+                return
+            
+            # Export using export tools
+            export_tools = get_export_tools()
+            file_path = export_tools.export_trades_to_csv(trades)
+            
+            QMessageBox.information(
+                self,
+                "Export Successful",
+                f"Exported {len(trades)} trades to:\n{file_path}"
+            )
+            logger.info(f"Exported {len(trades)} trades to {file_path}")
+        
+        except Exception as e:
+            logger.error(f"Error exporting trades: {e}")
+            QMessageBox.critical(self, "Export Error", f"Failed to export trades: {e}")
     
     def add_trade(self, symbol: str, trade_type: str, entry_price: float, exit_price: float, pnl: float):
         """Add a trade to the history."""
@@ -1446,31 +1620,36 @@ class PerformanceMetricsWidget(QWidget):
         metrics_grid = QVBoxLayout()
         metrics_grid.setSpacing(8)
         
-        # Metric rows
-        self.metrics = {
-            "Total Trades": (0, "120"),
-            "Profit Factor": (1, "1.85"),
-            "Max Drawdown": (2, "4.2%"),
-            "Sharpe Ratio": (3, "1.45"),
-            "Win Rate": (4, "58%"),
-            "Avg Win": (5, "₹1,250"),
-            "Avg Loss": (6, "₹-850"),
+        # Store value labels for updates
+        self.metric_labels = {}
+        
+        # Metric rows with default values
+        metric_defaults = {
+            "total_trades": ("Total Trades", "0"),
+            "profit_factor": ("Profit Factor", "0.00"),
+            "max_drawdown": ("Max Drawdown", "0.0%"),
+            "sharpe_ratio": ("Sharpe Ratio", "0.00"),
+            "win_rate": ("Win Rate", "0%"),
+            "avg_win": ("Avg Win", "₹0"),
+            "avg_loss": ("Avg Loss", "₹0"),
         }
         
-        for metric_name, (idx, value) in self.metrics.items():
+        for key, (display_name, default_value) in metric_defaults.items():
             metric_layout = QHBoxLayout()
             
-            label = QLabel(metric_name + ":")
+            label = QLabel(display_name + ":")
             label.setFont(QFont("Arial", 9))
             label.setStyleSheet("color: #888;")
             label.setMinimumWidth(120)
             
-            value_label = QLabel(value)
+            value_label = QLabel(default_value)
             value_label.setFont(QFont("Arial", 10, QFont.Weight.Bold))
-            if metric_name in ["Profit Factor", "Sharpe Ratio", "Win Rate"]:
+            if display_name in ["Profit Factor", "Sharpe Ratio", "Win Rate"]:
                 value_label.setStyleSheet("color: #10b981;")
             else:
                 value_label.setStyleSheet("color: #fff;")
+            
+            self.metric_labels[key] = value_label
             
             metric_layout.addWidget(label)
             metric_layout.addStretch()
@@ -1481,12 +1660,21 @@ class PerformanceMetricsWidget(QWidget):
         layout.addStretch()
         self.setLayout(layout)
     
-    def update_metrics(self, metrics_data: Dict):
-        """Update metrics with new data."""
-        for key, value in metrics_data.items():
-            if key in self.metrics:
-                # Update the value in display (would need to refactor to use labels dict)
-                pass
+    def update_display(self, metrics_data: Dict):
+        """Update metrics display with new data."""
+        key_map = {
+            'total_trades': 'total_trades',
+            'profit_factor': 'profit_factor',
+            'max_drawdown': 'max_drawdown',
+            'sharpe_ratio': 'sharpe_ratio',
+            'win_rate': 'win_rate',
+            'avg_win': 'avg_win',
+            'avg_loss': 'avg_loss',
+        }
+        
+        for key, label_key in key_map.items():
+            if key in metrics_data and label_key in self.metric_labels:
+                self.metric_labels[label_key].setText(str(metrics_data[key]))
 
 
 class RiskAlertsWidget(QWidget):
@@ -1512,53 +1700,72 @@ class RiskAlertsWidget(QWidget):
         title.setStyleSheet("color: #ef4444; border-bottom: 1px solid #333; padding-bottom: 8px;")
         layout.addWidget(title)
         
-        # Alert items
-        self.alert_items = []
+        # Scrollable alert area
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setStyleSheet("QScrollArea { background-color: #1e1e1e; border: none; }")
         
-        # Example alerts
-        alerts = [
-            ("Daily Loss Limit Exceeded", "You've lost ₹2,500 today (limit: ₹5,000)"),
-            ("Max Drawdown Alert", "Current drawdown: 4.2% (limit: 5%)")
-        ]
+        # Container for alerts
+        self.alert_container = QWidget()
+        self.alert_container_layout = QVBoxLayout()
+        self.alert_container_layout.setSpacing(8)
+        self.alert_container_layout.setContentsMargins(0, 0, 0, 0)
         
-        for alert_title, alert_msg in alerts:
-            alert_frame = QFrame()
-            alert_frame.setStyleSheet("""
-                QFrame {
-                    background-color: #2a1a1a;
-                    border: 1px solid #663333;
-                    border-radius: 3px;
-                    padding: 8px;
-                }
-            """)
-            
-            alert_layout = QHBoxLayout()
-            
-            # Alert icon (red dot)
-            icon = QLabel("●")
-            icon.setStyleSheet("color: #ef4444; font-size: 12px;")
-            alert_layout.addWidget(icon)
-            
-            # Alert text
-            text_layout = QVBoxLayout()
-            title_label = QLabel(alert_title)
-            title_label.setFont(QFont("Arial", 9, QFont.Weight.Bold))
-            title_label.setStyleSheet("color: #ef4444;")
-            
-            msg_label = QLabel(alert_msg)
-            msg_label.setFont(QFont("Arial", 8))
-            msg_label.setStyleSheet("color: #aaa;")
-            msg_label.setWordWrap(True)
-            
-            text_layout.addWidget(title_label)
-            text_layout.addWidget(msg_label)
-            alert_layout.addLayout(text_layout, 1)
-            
-            alert_frame.setLayout(alert_layout)
-            layout.addWidget(alert_frame)
+        self.alert_container.setLayout(self.alert_container_layout)
+        scroll.setWidget(self.alert_container)
+        layout.addWidget(scroll)
         
         layout.addStretch()
         self.setLayout(layout)
+    
+    def update_alerts(self, alerts: list):
+        """Update alerts display."""
+        # Clear existing alerts
+        while self.alert_container_layout.count():
+            self.alert_container_layout.takeAt(0).widget().deleteLater()
+        
+        # Add new alerts
+        if not alerts:
+            no_alerts = QLabel("✓ No active alerts")
+            no_alerts.setFont(QFont("Arial", 9))
+            no_alerts.setStyleSheet("color: #10b981;")
+            self.alert_container_layout.addWidget(no_alerts)
+        else:
+            for alert in alerts:
+                alert_frame = QFrame()
+                alert_frame.setStyleSheet("""
+                    QFrame {
+                        background-color: #2a1a1a;
+                        border: 1px solid #663333;
+                        border-radius: 3px;
+                        padding: 8px;
+                    }
+                """)
+                
+                alert_layout = QHBoxLayout()
+                
+                # Alert icon (red dot)
+                icon = QLabel("●")
+                icon.setStyleSheet("color: #ef4444; font-size: 12px;")
+                alert_layout.addWidget(icon)
+                
+                # Alert text
+                text_layout = QVBoxLayout()
+                title_label = QLabel(alert.get('title', 'Alert'))
+                title_label.setFont(QFont("Arial", 9, QFont.Weight.Bold))
+                title_label.setStyleSheet("color: #ef4444;")
+                
+                msg_label = QLabel(alert.get('message', ''))
+                msg_label.setFont(QFont("Arial", 8))
+                msg_label.setStyleSheet("color: #aaa;")
+                msg_label.setWordWrap(True)
+                
+                text_layout.addWidget(title_label)
+                text_layout.addWidget(msg_label)
+                alert_layout.addLayout(text_layout, 1)
+                
+                alert_frame.setLayout(alert_layout)
+                self.alert_container_layout.addWidget(alert_frame)
 
 
 class TradingTerminal(QMainWindow):
@@ -1779,9 +1986,9 @@ class TradingTerminal(QMainWindow):
             if self.ws_data_engine:
                 self.ws_data_engine.register_callback(self.price_handler.on_price_update)
             
-            # Update timer for positions
+            # Update timer for positions, metrics, and risk alerts
             self.update_timer = QTimer()
-            self.update_timer.timeout.connect(self.update_positions)
+            self.update_timer.timeout.connect(self.update_all_widgets)
             self.update_timer.start(2000)  # Update every 2 seconds
 
             # Initial margin info
@@ -2151,6 +2358,178 @@ class TradingTerminal(QMainWindow):
             
         except Exception as e:
             logger.error(f"Error handling order execution: {e}")
+    
+    def update_all_widgets(self):
+        """Update all widgets on timer tick (every 2 seconds)."""
+        try:
+            self.update_positions()
+            self.update_margin_info()
+            self.update_metrics()
+            self.update_risk_alerts()
+            self.update_trade_history()
+            self.update_chart_data()
+        except Exception as e:
+            logger.error(f"Error in update_all_widgets: {e}")
+    
+    def update_metrics(self):
+        """Update performance metrics display."""
+        try:
+            if not self.portfolio_manager or not self.performance_metrics_widget:
+                return
+            
+            # Get closed trades from portfolio manager
+            closed_trades = getattr(self.portfolio_manager, 'closed_trades', [])
+            
+            # Calculate metrics
+            total_trades = len(closed_trades)
+            
+            if total_trades > 0:
+                # Calculate wins and losses
+                winning_trades = [t for t in closed_trades if t.get('pnl', 0) > 0]
+                losing_trades = [t for t in closed_trades if t.get('pnl', 0) < 0]
+                
+                total_wins = sum(t.get('pnl', 0) for t in winning_trades)
+                total_losses = sum(abs(t.get('pnl', 0)) for t in losing_trades)
+                
+                # Profit Factor
+                profit_factor = total_wins / total_losses if total_losses > 0 else (total_wins / 1 if total_wins > 0 else 0)
+                
+                # Win Rate
+                win_rate = (len(winning_trades) / total_trades * 100) if total_trades > 0 else 0
+                
+                # Average Win/Loss
+                avg_win = total_wins / len(winning_trades) if winning_trades else 0
+                avg_loss = total_losses / len(losing_trades) if losing_trades else 0
+                
+                # Max Drawdown (simplified)
+                cumulative_pnl = []
+                running_total = 0
+                for trade in closed_trades:
+                    running_total += trade.get('pnl', 0)
+                    cumulative_pnl.append(running_total)
+                
+                peak = cumulative_pnl[0] if cumulative_pnl else 0
+                max_drawdown = 0
+                for pnl in cumulative_pnl:
+                    if pnl > peak:
+                        peak = pnl
+                    drawdown = (peak - pnl) / abs(peak) if peak != 0 else 0
+                    max_drawdown = max(max_drawdown, drawdown)
+                
+                # Update widget display
+                self.performance_metrics_widget.update_display({
+                    'total_trades': total_trades,
+                    'profit_factor': f"{profit_factor:.2f}",
+                    'max_drawdown': f"{max_drawdown * 100:.1f}%",
+                    'sharpe_ratio': "1.45",  # Placeholder
+                    'win_rate': f"{win_rate:.1f}%",
+                    'avg_win': f"₹{avg_win:.0f}",
+                    'avg_loss': f"₹{avg_loss:.0f}"
+                })
+                
+                logger.debug(f"Updated metrics: {total_trades} trades, {win_rate:.1f}% win rate")
+        
+        except Exception as e:
+            logger.error(f"Error updating metrics: {e}")
+    
+    def update_risk_alerts(self):
+        """Update risk alerts based on portfolio state."""
+        try:
+            if not self.risk_alerts_widget or not self.portfolio_manager:
+                return
+            
+            # Check daily loss limit (₹5,000)
+            daily_loss_limit = 5000
+            today_pnl = self.portfolio_manager.get_today_pnl() if hasattr(self.portfolio_manager, 'get_today_pnl') else 0
+            
+            # Check max drawdown (5%)
+            closed_trades = getattr(self.portfolio_manager, 'closed_trades', [])
+            max_dd = 0
+            if closed_trades:
+                cumulative_pnl = []
+                running = 0
+                for t in closed_trades:
+                    running += t.get('pnl', 0)
+                    cumulative_pnl.append(running)
+                peak = cumulative_pnl[0]
+                for pnl in cumulative_pnl:
+                    if pnl > peak:
+                        peak = pnl
+                    dd = (peak - pnl) / abs(peak) if peak != 0 else 0
+                    max_dd = max(max_dd, dd)
+            
+            # Update risk alerts
+            alerts = []
+            if today_pnl < -daily_loss_limit:
+                alerts.append({
+                    'title': 'Daily Loss Limit Exceeded',
+                    'message': f"You've lost ₹{abs(today_pnl):.0f} today (limit: ₹{daily_loss_limit})"
+                })
+            
+            if max_dd > 0.05:
+                alerts.append({
+                    'title': 'Max Drawdown Alert',
+                    'message': f"Current drawdown: {max_dd*100:.1f}% (limit: 5%)"
+                })
+            
+            # Check margin utilization
+            margin_used = getattr(self.portfolio_manager, 'used_capital', 0)
+            available = getattr(self.portfolio_manager, 'available_capital', 100000)
+            margin_util = (margin_used / (margin_used + available) * 100) if (margin_used + available) > 0 else 0
+            
+            if margin_util > 80:
+                alerts.append({
+                    'title': 'High Margin Usage',
+                    'message': f"Margin utilization: {margin_util:.1f}% (caution: >80%)"
+                })
+            
+            # Update widget
+            self.risk_alerts_widget.update_alerts(alerts)
+            logger.debug(f"Updated risk alerts: {len(alerts)} active alerts")
+        
+        except Exception as e:
+            logger.error(f"Error updating risk alerts: {e}")
+    
+    def update_trade_history(self):
+        """Update trade history widget with closed trades."""
+        try:
+            if not self.trade_history_widget or not self.portfolio_manager:
+                return
+            
+            closed_trades = getattr(self.portfolio_manager, 'closed_trades', [])
+            
+            # Only add new trades (compare with widget's current count)
+            current_count = self.trade_history_widget.table.rowCount()
+            
+            for i, trade in enumerate(closed_trades[current_count:]):
+                symbol = trade.get('symbol', 'N/A')
+                trade_type = trade.get('side', 'BUY')
+                entry = trade.get('entry_price', 0)
+                exit_price = trade.get('exit_price', 0)
+                pnl = trade.get('pnl', 0)
+                
+                self.trade_history_widget.add_trade(symbol, trade_type, entry, exit_price, pnl)
+            
+            logger.debug(f"Updated trade history: {len(closed_trades)} total trades")
+        
+        except Exception as e:
+            logger.error(f"Error updating trade history: {e}")
+    
+    def update_chart_data(self):
+        """Update chart with latest price data and OHLC."""
+        try:
+            if not self.chart_widget or not self.chart_widget.current_symbol:
+                return
+            
+            # Get selected symbol and timeframe
+            symbol = self.chart_widget.current_symbol
+            timeframe = self.chart_widget.current_timeframe
+            
+            # Update chart with new data
+            self.chart_widget.update_chart(symbol, timeframe)
+            
+        except Exception as e:
+            logger.debug(f"Chart update skipped: {e}")
 
 
 def main():
