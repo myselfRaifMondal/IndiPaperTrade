@@ -959,6 +959,7 @@ class PositionsWidget(QWidget):
     
     def __init__(self):
         super().__init__()
+        self.parent_terminal = None  # Will be set by TradingTerminal for close functionality
         self.init_ui()
         self.setStyleSheet(POSITIONS_WIDGET_STYLESHEET)
         
@@ -968,9 +969,9 @@ class PositionsWidget(QWidget):
         
         # Table
         self.table = QTableWidget()
-        self.table.setColumnCount(10)
+        self.table.setColumnCount(11)
         self.table.setHorizontalHeaderLabels([
-            "Symbol", "Type", "Qty", "Avg Price", "LTP", "Leverage", "Margin Used", "P&L", "P&L %", "Status"
+            "Symbol", "Type", "Qty", "Avg Price", "LTP", "Leverage", "Margin Used", "P&L", "P&L %", "Status", "Action"
         ])
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.table.setMaximumHeight(250)
@@ -1024,6 +1025,27 @@ class PositionsWidget(QWidget):
             status_item.setForeground(QColor(16, 185, 129))  # Green
             status_item.setFont(QFont("Arial", 10, QFont.Weight.Bold))
             self.table.setItem(row, 9, status_item)
+            
+            # Close button
+            close_btn = QPushButton("Close")
+            close_btn.setStyleSheet(f"""
+                QPushButton {{
+                    background-color: {COLORS['accent_red']};
+                    color: white;
+                    border: none;
+                    padding: 4px 8px;
+                    border-radius: 3px;
+                    font-size: 9px;
+                }}
+                QPushButton:hover {{
+                    background-color: #d32f2f;
+                }}
+            """)
+            close_btn.clicked.connect(
+                lambda checked, sym=symbol, qty=position.quantity, side=position.position_type.value:
+                self.parent_terminal.close_position(sym, qty, side) if self.parent_terminal else None
+            )
+            self.table.setCellWidget(row, 10, close_btn)
 
 
 
@@ -1032,6 +1054,7 @@ class OrderBookWidget(QWidget):
     
     def __init__(self):
         super().__init__()
+        self.parent_terminal = None  # Will be set by TradingTerminal for cancel functionality
         self.init_ui()
         self.setStyleSheet(ORDER_BOOK_STYLESHEET)
         
@@ -1041,9 +1064,9 @@ class OrderBookWidget(QWidget):
         
         # Table
         self.table = QTableWidget()
-        self.table.setColumnCount(7)
+        self.table.setColumnCount(8)
         self.table.setHorizontalHeaderLabels([
-            "Time", "Symbol", "Type", "Side", "Qty", "Price", "Status"
+            "Time", "Symbol", "Type", "Side", "Qty", "Price", "Status", "Action"
         ])
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.table.setMaximumHeight(200)
@@ -1076,6 +1099,31 @@ class OrderBookWidget(QWidget):
         elif order.status.value == "REJECTED":
             status_item.setForeground(QColor(150, 0, 0))
         
+        self.table.setItem(row, 6, status_item)
+        
+        # Add cancel button for pending orders
+        if order.is_active():
+            cancel_btn = QPushButton("Cancel")
+            cancel_btn.setStyleSheet(f"""
+                QPushButton {{
+                    background-color: {COLORS['accent_red']};
+                    color: white;
+                    border: none;
+                    padding: 4px 8px;
+                    border-radius: 3px;
+                    font-size: 9px;
+                }}
+                QPushButton:hover {{
+                    background-color: #d32f2f;
+                }}
+            """)
+            cancel_btn.clicked.connect(lambda: self.cancel_order(order.order_id))
+            self.table.setCellWidget(row, 7, cancel_btn)
+    
+    def cancel_order(self, order_id: str):
+        """Cancel a pending order."""
+        if self.parent_terminal:
+            self.parent_terminal.cancel_order(order_id)
         self.table.setItem(row, 6, status_item)
         
         # Scroll to latest
@@ -1262,6 +1310,257 @@ class AlertsWidget(QWidget):
                 self.alerts_table.item(row, 3).setText(status)
 
 
+class ChartWidget(QWidget):
+    """Candlestick chart widget (placeholder for actual charting library)."""
+    
+    def __init__(self):
+        super().__init__()
+        self.init_ui()
+        self.setStyleSheet("""
+            QWidget {
+                background-color: #1e1e1e;
+                border: 1px solid #333;
+                border-radius: 3px;
+            }
+        """)
+    
+    def init_ui(self):
+        layout = QVBoxLayout()
+        
+        # Chart title
+        title = QLabel("Chart - Select symbol to view")
+        title.setFont(QFont("Arial", 10, QFont.Weight.Bold))
+        title.setStyleSheet("color: #888;")
+        layout.addWidget(title)
+        
+        # Placeholder chart area (in real implementation, use matplotlib/plotly)
+        chart_area = QFrame()
+        chart_area.setMinimumHeight(300)
+        chart_area.setStyleSheet("""
+            QFrame {
+                background-color: #111;
+                border: 1px dashed #333;
+            }
+        """)
+        layout.addWidget(chart_area, 1)
+        
+        self.setLayout(layout)
+    
+    def update_chart(self, symbol: str, data: Dict):
+        """Update chart with new data."""
+        # Placeholder for real chart updates
+        pass
+
+
+class TradeHistoryWidget(QWidget):
+    """Detailed trade history table."""
+    
+    def __init__(self):
+        super().__init__()
+        self.init_ui()
+        self.setStyleSheet("""
+            QWidget {
+                background-color: #1e1e1e;
+            }
+        """)
+    
+    def init_ui(self):
+        layout = QVBoxLayout()
+        layout.setContentsMargins(0, 0, 0, 0)
+        
+        # Title
+        title = QLabel("Trade History")
+        title.setFont(QFont("Arial", 10, QFont.Weight.Bold))
+        title.setStyleSheet("color: #10b981;")
+        layout.addWidget(title)
+        
+        # Table
+        self.table = QTableWidget()
+        self.table.setColumnCount(6)
+        self.table.setHorizontalHeaderLabels(["Time", "Symbol", "Type", "Entry", "Exit", "P&L"])
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.table.setMaximumHeight(150)
+        self.table.setStyleSheet("""
+            QTableWidget {
+                background-color: #1a1a1a;
+                gridline-color: #333;
+                border: 1px solid #333;
+            }
+            QHeaderView::section {
+                background-color: #2a2a2a;
+                color: #888;
+                padding: 4px;
+                border: none;
+                font-size: 9px;
+            }
+            QTableWidget::item {
+                padding: 4px;
+            }
+        """)
+        
+        layout.addWidget(self.table)
+        self.setLayout(layout)
+    
+    def add_trade(self, symbol: str, trade_type: str, entry_price: float, exit_price: float, pnl: float):
+        """Add a trade to the history."""
+        row = self.table.rowCount()
+        self.table.insertRow(row)
+        
+        time_str = datetime.now().strftime("%H:%M:%S")
+        self.table.setItem(row, 0, QTableWidgetItem(time_str))
+        self.table.setItem(row, 1, QTableWidgetItem(symbol))
+        self.table.setItem(row, 2, QTableWidgetItem(trade_type))
+        self.table.setItem(row, 3, QTableWidgetItem(f"₹{entry_price:.2f}"))
+        self.table.setItem(row, 4, QTableWidgetItem(f"₹{exit_price:.2f}"))
+        
+        pnl_item = QTableWidgetItem(f"₹{pnl:.2f}")
+        color = QColor(16, 185, 129) if pnl >= 0 else QColor(239, 68, 68)
+        pnl_item.setForeground(color)
+        self.table.setItem(row, 5, pnl_item)
+
+
+class PerformanceMetricsWidget(QWidget):
+    """Performance metrics display."""
+    
+    def __init__(self):
+        super().__init__()
+        self.init_ui()
+        self.setStyleSheet("""
+            QWidget {
+                background-color: #1e1e1e;
+            }
+        """)
+    
+    def init_ui(self):
+        layout = QVBoxLayout()
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(10)
+        
+        # Title
+        title = QLabel("PERFORMANCE METRICS")
+        title.setFont(QFont("Arial", 10, QFont.Weight.Bold))
+        title.setStyleSheet("color: #10b981; border-bottom: 1px solid #333; padding-bottom: 8px;")
+        layout.addWidget(title)
+        
+        # Metrics grid
+        metrics_grid = QVBoxLayout()
+        metrics_grid.setSpacing(8)
+        
+        # Metric rows
+        self.metrics = {
+            "Total Trades": (0, "120"),
+            "Profit Factor": (1, "1.85"),
+            "Max Drawdown": (2, "4.2%"),
+            "Sharpe Ratio": (3, "1.45"),
+            "Win Rate": (4, "58%"),
+            "Avg Win": (5, "₹1,250"),
+            "Avg Loss": (6, "₹-850"),
+        }
+        
+        for metric_name, (idx, value) in self.metrics.items():
+            metric_layout = QHBoxLayout()
+            
+            label = QLabel(metric_name + ":")
+            label.setFont(QFont("Arial", 9))
+            label.setStyleSheet("color: #888;")
+            label.setMinimumWidth(120)
+            
+            value_label = QLabel(value)
+            value_label.setFont(QFont("Arial", 10, QFont.Weight.Bold))
+            if metric_name in ["Profit Factor", "Sharpe Ratio", "Win Rate"]:
+                value_label.setStyleSheet("color: #10b981;")
+            else:
+                value_label.setStyleSheet("color: #fff;")
+            
+            metric_layout.addWidget(label)
+            metric_layout.addStretch()
+            metric_layout.addWidget(value_label)
+            metrics_grid.addLayout(metric_layout)
+        
+        layout.addLayout(metrics_grid)
+        layout.addStretch()
+        self.setLayout(layout)
+    
+    def update_metrics(self, metrics_data: Dict):
+        """Update metrics with new data."""
+        for key, value in metrics_data.items():
+            if key in self.metrics:
+                # Update the value in display (would need to refactor to use labels dict)
+                pass
+
+
+class RiskAlertsWidget(QWidget):
+    """Risk alerts and warnings."""
+    
+    def __init__(self):
+        super().__init__()
+        self.init_ui()
+        self.setStyleSheet("""
+            QWidget {
+                background-color: #1e1e1e;
+            }
+        """)
+    
+    def init_ui(self):
+        layout = QVBoxLayout()
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(8)
+        
+        # Title
+        title = QLabel("RISK ALERTS")
+        title.setFont(QFont("Arial", 10, QFont.Weight.Bold))
+        title.setStyleSheet("color: #ef4444; border-bottom: 1px solid #333; padding-bottom: 8px;")
+        layout.addWidget(title)
+        
+        # Alert items
+        self.alert_items = []
+        
+        # Example alerts
+        alerts = [
+            ("Daily Loss Limit Exceeded", "You've lost ₹2,500 today (limit: ₹5,000)"),
+            ("Max Drawdown Alert", "Current drawdown: 4.2% (limit: 5%)")
+        ]
+        
+        for alert_title, alert_msg in alerts:
+            alert_frame = QFrame()
+            alert_frame.setStyleSheet("""
+                QFrame {
+                    background-color: #2a1a1a;
+                    border: 1px solid #663333;
+                    border-radius: 3px;
+                    padding: 8px;
+                }
+            """)
+            
+            alert_layout = QHBoxLayout()
+            
+            # Alert icon (red dot)
+            icon = QLabel("●")
+            icon.setStyleSheet("color: #ef4444; font-size: 12px;")
+            alert_layout.addWidget(icon)
+            
+            # Alert text
+            text_layout = QVBoxLayout()
+            title_label = QLabel(alert_title)
+            title_label.setFont(QFont("Arial", 9, QFont.Weight.Bold))
+            title_label.setStyleSheet("color: #ef4444;")
+            
+            msg_label = QLabel(alert_msg)
+            msg_label.setFont(QFont("Arial", 8))
+            msg_label.setStyleSheet("color: #aaa;")
+            msg_label.setWordWrap(True)
+            
+            text_layout.addWidget(title_label)
+            text_layout.addWidget(msg_label)
+            alert_layout.addLayout(text_layout, 1)
+            
+            alert_frame.setLayout(alert_layout)
+            layout.addWidget(alert_frame)
+        
+        layout.addStretch()
+        self.setLayout(layout)
+
+
 class TradingTerminal(QMainWindow):
     """Main trading terminal window with professional dark mode styling."""
     
@@ -1296,58 +1595,113 @@ class TradingTerminal(QMainWindow):
         self.rss_manager.start_auto_update(interval=300)
         
     def init_ui(self):
-        """Initialize UI components."""
+        """Initialize UI components with professional layout matching desired design."""
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         
         main_layout = QVBoxLayout()
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
         
-        # Top bar - Market Clock and News Feed side by side
-        top_bar_layout = QHBoxLayout()
+        # ===== TOP BAR: Market Tickers =====
         self.market_clock = MarketClockWidget()
-        self.news_feed = NewsFeedWidget(self.rss_manager)
-        top_bar_layout.addWidget(self.market_clock, 1)
-        top_bar_layout.addWidget(self.news_feed, 2)
-        main_layout.addLayout(top_bar_layout)
+        main_layout.addWidget(self.market_clock)
         
-        # Main trading panel
+        # ===== MAIN CONTENT: 3-Column Layout =====
         trading_layout = QHBoxLayout()
+        trading_layout.setContentsMargins(5, 5, 5, 5)
+        trading_layout.setSpacing(5)
         
-        # Left panel - Market Watch
+        # LEFT PANEL: Watchlist, Alerts, Trade History
+        left_panel = QWidget()
+        left_layout = QVBoxLayout()
+        left_layout.setContentsMargins(0, 0, 0, 0)
+        left_layout.setSpacing(5)
+        
         self.market_watch = MarketWatchWidget()
         self.market_watch.symbol_selected.connect(self.on_symbol_selected)
         self.market_watch.symbol_added.connect(self.on_symbol_added)
+        left_layout.addWidget(self.market_watch)
         
-        # Middle panel - Order Entry
+        left_panel.setLayout(left_layout)
+        
+        # CENTER PANEL: Chart + Order Entry + Trade History
+        center_panel = QWidget()
+        center_layout = QVBoxLayout()
+        center_layout.setContentsMargins(0, 0, 0, 0)
+        center_layout.setSpacing(5)
+        
+        # Chart widget
+        self.chart_widget = ChartWidget()
+        center_layout.addWidget(self.chart_widget, 2)
+        
+        # Order Entry Panel
         self.order_panel = OrderPanel()
         self.order_panel.order_placed.connect(self.on_order_placed)
+        center_layout.addWidget(self.order_panel, 1)
         
-        # Right panel - Positions and Orders
-        right_panel = QTabWidget()
+        # Trade History
+        self.trade_history_widget = TradeHistoryWidget()
+        center_layout.addWidget(self.trade_history_widget, 1)
+        
+        center_panel.setLayout(center_layout)
+        
+        # RIGHT PANEL: Portfolio Summary, Positions, Performance, Alerts
+        right_panel = QWidget()
+        right_layout = QVBoxLayout()
+        right_layout.setContentsMargins(0, 0, 0, 0)
+        right_layout.setSpacing(5)
+        
+        # Right panel top section (Portfolio Summary + Open Positions)
+        right_top = QWidget()
+        right_top_layout = QVBoxLayout()
+        right_top_layout.setContentsMargins(0, 0, 0, 0)
+        right_top_layout.setSpacing(5)
+        
         self.margin_info_widget = MarginInfoWidget()
         self.positions_widget = PositionsWidget()
-        self.order_book_widget = OrderBookWidget()
-        self.alerts_widget = AlertsWidget()
         
-        right_panel.addTab(self.margin_info_widget, "Margin")
-        right_panel.addTab(self.positions_widget, "Positions")
-        right_panel.addTab(self.order_book_widget, "Order Book")
-        right_panel.addTab(self.alerts_widget, "Alerts")
+        right_top_layout.addWidget(self.margin_info_widget, 1)
+        right_top_layout.addWidget(self.positions_widget, 2)
+        right_top.setLayout(right_top_layout)
         
-        # Connect alert signals
-        self.alerts_widget.alert_added.connect(self.on_alert_added)
+        # Right panel bottom section (Performance Metrics + Risk Alerts)
+        right_bottom = QWidget()
+        right_bottom_layout = QVBoxLayout()
+        right_bottom_layout.setContentsMargins(0, 0, 0, 0)
+        right_bottom_layout.setSpacing(5)
         
-        # Create splitter for resizable panels
+        self.performance_metrics_widget = PerformanceMetricsWidget()
+        self.risk_alerts_widget = RiskAlertsWidget()
+        
+        right_bottom_layout.addWidget(self.performance_metrics_widget, 1)
+        right_bottom_layout.addWidget(self.risk_alerts_widget, 1)
+        right_bottom.setLayout(right_bottom_layout)
+        
+        # Add right panel sections to main layout
+        right_layout.addWidget(right_top, 2)
+        right_layout.addWidget(right_bottom, 1)
+        right_panel.setLayout(right_layout)
+        
+        # Create horizontal splitter for all 3 panels
         splitter = QSplitter(Qt.Orientation.Horizontal)
-        splitter.addWidget(self.market_watch)
-        splitter.addWidget(self.order_panel)
+        splitter.addWidget(left_panel)
+        splitter.addWidget(center_panel)
         splitter.addWidget(right_panel)
-        splitter.setStretchFactor(0, 2)
-        splitter.setStretchFactor(1, 1)
-        splitter.setStretchFactor(2, 2)
+        
+        # Set stretch factors for responsive layout
+        splitter.setStretchFactor(0, 1)  # Left panel: 20%
+        splitter.setStretchFactor(1, 2)  # Center panel: 50%
+        splitter.setStretchFactor(2, 1)  # Right panel: 30%
+        
+        # Set collapsible splitter
+        splitter.setCollapsible(0, True)
+        splitter.setCollapsible(1, False)
+        splitter.setCollapsible(2, True)
         
         trading_layout.addWidget(splitter)
-        main_layout.addLayout(trading_layout)
+        main_layout.addLayout(trading_layout, 1)
+        
         central_widget.setLayout(main_layout)
         
         # Status bar
@@ -1549,13 +1903,73 @@ class TradingTerminal(QMainWindow):
     
     def update_positions(self):
         """Update positions display."""
-        if self.portfolio_manager:
-            self.portfolio_manager.update_market_prices()
-            positions = self.portfolio_manager.get_all_positions()
-            self.positions_widget.update_positions(positions)
-            self.update_margin_info()
-
+        try:
+            if self.portfolio_manager:
+                self.portfolio_manager.update_market_prices()
+                positions = self.portfolio_manager.get_all_positions()
+                self.positions_widget.update_positions(positions)
+                self.positions_widget.parent_terminal = self  # Add reference for close functionality
+                self.update_margin_info()
+        except Exception as e:
+            # Log error but don't show modal dialog from timer callback
+            logger.error(f"Error updating positions: {e}", exc_info=True)
+            self.statusBar.showMessage(f"Error updating positions: {str(e)[:50]}", 5000)
+    
     def update_margin_info(self):
+        """Update margin information display."""
+        try:
+            if self.portfolio_manager and self.margin_info_widget:
+                available = self.portfolio_manager.available_capital
+                used = self.portfolio_manager.used_capital
+                leverage = self.portfolio_manager.margin_multiplier
+                self.margin_info_widget.update_margin_info(available, used, leverage)
+        except Exception as e:
+            logger.error(f"Error updating margin info: {e}", exc_info=True)
+    
+    def cancel_order(self, order_id: str):
+        """Cancel a pending order."""
+        if self.order_simulator:
+            success = self.order_simulator.cancel_order(order_id)
+            if success:
+                self.statusBar.showMessage(f"Order cancelled: {order_id}", 3000)
+                self.order_book_widget.refresh_orders()
+            else:
+                QMessageBox.warning(self, "Cancel Failed", f"Could not cancel order {order_id}")
+    
+    def close_position(self, symbol: str, quantity: int, side: str):
+        """Close an open position with a market order."""
+        try:
+            if not self.order_simulator:
+                QMessageBox.warning(self, "Error", "Order simulator not initialized")
+                return
+            
+            # Opposite side to close (side is LONG or SHORT from PositionType)
+            close_side = OrderSide.SELL if side == "LONG" else OrderSide.BUY
+            
+            # Place market order to close
+            order = self.order_simulator.place_market_order(symbol, close_side, quantity)
+            
+            if order.is_filled():
+                self.portfolio_manager.execute_order(order)
+                self.order_book_widget.add_order(order)
+                self.update_positions()
+                self.update_margin_info()
+                
+                self.statusBar.showMessage(
+                    f"Position closed: {symbol} {close_side.value} {quantity} @ ₹{order.filled_price:.2f}",
+                    5000
+                )
+                QMessageBox.information(
+                    self,
+                    "Position Closed",
+                    f"{close_side.value} {quantity} {symbol}\n@ ₹{order.filled_price:.2f}"
+                )
+            else:
+                QMessageBox.warning(self, "Close Failed", f"Could not close position for {symbol}")
+        
+        except Exception as e:
+            logger.error(f"Error closing position: {e}")
+            QMessageBox.critical(self, "Error", f"Failed to close position: {str(e)}")
         """Update margin widget with 5x leverage and actual margin used."""
         if not self.portfolio_manager:
             return

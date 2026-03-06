@@ -112,6 +112,9 @@ class OrderSimulator:
         # Track positions for SL/TP monitoring
         self.positions: Dict[str, Dict] = {}  # symbol -> {quantity, avg_price, sl, tp}
         
+        # Track previous prices for gap detection in limit orders
+        self.previous_prices: Dict[str, float] = {}  # symbol -> previous_ltp
+        
         # Background processing
         self.running = False
         self.process_thread: Optional[threading.Thread] = None
@@ -451,6 +454,10 @@ class OrderSimulator:
         """
         Check if limit order should be executed.
         
+        Handles price gaps and volatility by checking if price has crossed
+        the limit level (using bid/ask in addition to LTP). Detects gaps
+        by comparing current price with previous price.
+        
         Args:
             order: Limit order to check
         
@@ -458,21 +465,48 @@ class OrderSimulator:
             bool: True if should execute, False otherwise
         """
         try:
-            # Get current price
+            # Get current price data
             price_data = self.data_engine.get_price_data(order.symbol)
             
             if not price_data or not price_data.ltp:
                 return False
             
             ltp = price_data.ltp
+            bid = price_data.bid if hasattr(price_data, 'bid') and price_data.bid else ltp
+            ask = price_data.ask if hasattr(price_data, 'ask') and price_data.ask else ltp
             
-            # Check execution condition
+            # Get previous price for gap detection
+            prev_ltp = self.previous_prices.get(order.symbol, ltp)
+            
+            # Update previous price for next check
+            self.previous_prices[order.symbol] = ltp
+            
+            # Tolerance for floating-point comparison (0.01 = 1 paisa)
+            tolerance = 0.01
+            
+            # Check execution condition - handles gaps where price jumps past limit
             if order.side == OrderSide.BUY:
-                # BUY limit: Execute when LTP <= limit price
-                return ltp <= order.price
+                # BUY limit: Execute when:
+                # 1. Current LTP <= limit price (with tolerance), OR
+                # 2. Ask crossed below limit (bid-ask available), OR
+                # 3. Price gapped OVER limit (prev_price > limit >= current_price)
+                limit_price = order.price
+                current_meets = ltp <= limit_price + tolerance
+                ask_meets = ask <= limit_price + tolerance if ask else False
+                gap_crossed = prev_ltp > limit_price >= ltp  # Gapped down through limit
+                
+                return current_meets or ask_meets or gap_crossed
             else:
-                # SELL limit: Execute when LTP >= limit price
-                return ltp >= order.price
+                # SELL limit: Execute when:
+                # 1. Current LTP >= limit price (with tolerance), OR
+                # 2. Bid crossed above limit (bid-ask available), OR
+                # 3. Price gapped OVER limit (prev_price < limit <= current_price)
+                limit_price = order.price
+                current_meets = ltp >= limit_price - tolerance
+                bid_meets = bid >= limit_price - tolerance if bid else False
+                gap_crossed = prev_ltp < limit_price <= ltp  # Gapped up through limit
+                
+                return current_meets or bid_meets or gap_crossed
         
         except Exception as e:
             logger.error(f"Error checking limit order: {e}")
@@ -634,6 +668,9 @@ class OrderSimulator:
         """
         Check if stop loss order should be triggered.
         
+        Includes gap detection: if price jumps over the trigger level,
+        the stop loss will still execute.
+        
         Args:
             order: Stop loss order to check
         
@@ -651,14 +688,29 @@ class OrderSimulator:
                 return False
             
             ltp = price_data.ltp
+            trigger_price = order.trigger_price
             
-            # Check trigger condition
+            # Get previous price for gap detection
+            prev_ltp = self.previous_prices.get(order.symbol, ltp)
+            
+            # Update previous price for next check
+            self.previous_prices[order.symbol] = ltp
+            
+            # Tolerance for floating-point comparison (0.01 = 1 paisa)
+            tolerance = 0.01
+            
+            # Check trigger condition with gap detection
             if order.side == OrderSide.SELL:  # Stop loss for long position
-                # Trigger when price drops below stop price
-                return ltp <= order.trigger_price
+                # Trigger when price drops below or crosses stop price
+                current_meets = ltp <= trigger_price + tolerance
+                gap_crossed = prev_ltp > trigger_price >= ltp  # Down-gap detection
+                return current_meets or gap_crossed
+                
             else:  # Stop loss for short position
-                # Trigger when price rises above stop price
-                return ltp >= order.trigger_price
+                # Trigger when price rises above or crosses stop price
+                current_meets = ltp >= trigger_price - tolerance
+                gap_crossed = prev_ltp < trigger_price <= ltp  # Up-gap detection
+                return current_meets or gap_crossed
         
         except Exception as e:
             logger.error(f"Error checking stop loss order: {e}")
